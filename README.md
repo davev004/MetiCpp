@@ -2,6 +2,8 @@
 
 A UCI-compatible Java chess engine compiled to native binary via GraalVM. Named after the two-faced Roman god of foresight. Built to compete with (C)Epimetheus.
 
+For full development roadmap see [ROADMAP.md](ROADMAP.md)
+
 ---
 
 ## Design Principles
