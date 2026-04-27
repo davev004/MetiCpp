@@ -18,7 +18,7 @@ Built to compete with (C)Epimetheus.
 ## Deliverables
 
 ### Phase 0 - Foundation
-- [ ] Gradle + GraalVM Native Build Tools scaffolding
+- [x] Gradle + GraalVM Native Build Tools scaffolding
 - [ ] `Board` - 12 bitboard representation
 - [ ] `MoveGenerator` - stateless, thread-safe
 - [ ] `MoveEncoder` - moves as primitives
