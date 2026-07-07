@@ -8,6 +8,9 @@ struct Board {
     // Indexed natively by the Piece enum (0 to 11)
     uint64_t bitboards[Meti::NUM_PIECES] = {0};
 
+    // The O(1) Mailbox lookup array (64 bytes)
+    Piece mailbox[64] = {PIECE_NONE};
+
     //Occupancy Bitboards (0 = White, 1 = Black, 2 = Both)
     uint64_t occupancy[3] = {0};
 

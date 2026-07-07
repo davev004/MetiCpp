@@ -121,5 +121,22 @@ namespace Attacks {
         }
         return ray;
     }
+    // Composite Attack Generators for Sliders
+    inline uint64_t get_rook_attacks(int sq, uint64_t occ) {
+        return get_ray_attacks(sq, NORTH, occ) |
+               get_ray_attacks(sq, SOUTH, occ) |
+               get_ray_attacks(sq, EAST, occ)  |
+               get_ray_attacks(sq, WEST, occ);
+    }
 
+    inline uint64_t get_bishop_attacks(int sq, uint64_t occ) {
+        return get_ray_attacks(sq, NE, occ) |
+               get_ray_attacks(sq, NW, occ) |
+               get_ray_attacks(sq, SE, occ) |
+               get_ray_attacks(sq, SW, occ);
+    }
+
+    inline uint64_t get_queen_attacks(int sq, uint64_t occ) {
+        return get_rook_attacks(sq, occ) | get_bishop_attacks(sq, occ);
+    }
 }
