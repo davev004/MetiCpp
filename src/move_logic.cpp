@@ -16,6 +16,7 @@ void make_move(Board& board, Meti::Move move) {
     int to = Meti::get_to(move);
     int flag = Meti::get_flag(move);
     int prom = Meti::get_prom(move);
+    uint8_t previous_en_passant = board.state.enPassantSquare;
 
     // 1. Snapshot State
     board.history[board.ply++] = board.state;
@@ -23,6 +24,12 @@ void make_move(Board& board, Meti::Move move) {
     // 2. Identify Pieces
     Piece moving = get_piece_at(board, from);
     Piece captured = get_piece_at(board, to);
+    bool is_en_passant = (flag == Meti::MOVE_CAPTURE && captured == PIECE_NONE && previous_en_passant == to);
+    int capture_sq = to;
+    if (is_en_passant) {
+        capture_sq = (moving <= W_KING) ? (to - 8) : (to + 8);
+        captured = get_piece_at(board, capture_sq);
+    }
 
     // 3. Zobrist: Remove moving piece, side-to-move, and old EP/Castle states
     board.state.zobristKey ^= Zobrist::pieceKeys[moving][from];
@@ -44,9 +51,9 @@ void make_move(Board& board, Meti::Move move) {
 
     // Handle Capture
     if (captured != PIECE_NONE) {
-        board.bitboards[captured] ^= (1ULL << to);
-        board.occupancy[us ^ 1] ^= (1ULL << to);
-        board.state.zobristKey ^= Zobrist::pieceKeys[captured][to];
+        board.bitboards[captured] ^= (1ULL << capture_sq);
+        board.occupancy[us ^ 1] ^= (1ULL << capture_sq);
+        board.state.zobristKey ^= Zobrist::pieceKeys[captured][capture_sq];
     }
 
     // Handle Special Move Flags
@@ -70,6 +77,8 @@ void make_move(Board& board, Meti::Move move) {
 void unmake_move(Board& board, Meti::Move move) {
     int from = Meti::get_from(move);
     int to = Meti::get_to(move);
+    int flag = Meti::get_flag(move);
+    GameState previous_state = board.history[board.ply - 1];
 
     // 1. Revert Move (Bitboard XOR is its own inverse)
     Piece moving = get_piece_at(board, to);
@@ -80,11 +89,16 @@ void unmake_move(Board& board, Meti::Move move) {
 
     // 2. Restore Captured Piece
     if (board.state.capturedPiece != PIECE_NONE) {
-        board.bitboards[board.state.capturedPiece] ^= (1ULL << to);
-        board.occupancy[board.state.sideToMove] ^= (1ULL << to);
+        int capture_sq = to;
+        if (flag == Meti::MOVE_CAPTURE && previous_state.enPassantSquare == to) {
+            capture_sq = (board.state.sideToMove == WHITE) ? (to - 8) : (to + 8);
+        }
+        board.bitboards[board.state.capturedPiece] ^= (1ULL << capture_sq);
+        board.occupancy[board.state.sideToMove] ^= (1ULL << capture_sq);
     }
 
     // 3. Restore State (Implicitly restores Zobrist Key, Castling, EP, Turn)
-    board.state = board.history[--board.ply];
+    board.state = previous_state;
+    --board.ply;
     board.occupancy[2] = board.occupancy[WHITE] | board.occupancy[BLACK];
 }

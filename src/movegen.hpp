@@ -12,11 +12,21 @@ namespace MoveGen {
     constexpr uint64_t FILE_H = 0x8080808080808080ULL;
     constexpr uint64_t RANK_3 = 0x0000000000FF0000ULL;
     constexpr uint64_t RANK_6 = 0x0000FF0000000000ULL;
+    constexpr uint64_t RANK_1 = 0x00000000000000FFULL;
+    constexpr uint64_t RANK_8 = 0xFF00000000000000ULL;
+
+    inline void add_promotion_moves(Meti::MoveList& list, int from_square, int to_square, Meti::MoveFlag flag) {
+        list.add(Meti::create_move(from_square, to_square, flag, Meti::PROMOTION_KNIGHT));
+        list.add(Meti::create_move(from_square, to_square, flag, Meti::PROMOTION_BISHOP));
+        list.add(Meti::create_move(from_square, to_square, flag, Meti::PROMOTION_ROOK));
+        list.add(Meti::create_move(from_square, to_square, flag, Meti::PROMOTION_QUEEN));
+    }
 
     template <Colour Us>
     inline void generate_pawns(const Board& board, Meti::MoveList& list) {
         constexpr Colour Them = (Us == WHITE) ? BLACK : WHITE;
         constexpr Piece OurPawn = (Us == WHITE) ? W_PAWN : B_PAWN;
+        constexpr uint64_t PromotionRank = (Us == WHITE) ? RANK_8 : RANK_1;
         
         uint64_t pawns = board.bitboards[OurPawn];
         uint64_t empty = ~board.occupancy[2];
@@ -34,6 +44,9 @@ namespace MoveGen {
             // Mask out File A and File H before shifting to prevent wrapping around the board
             attacks_left  = ((pawns & ~FILE_A) << 7) & enemies;
             attacks_right = ((pawns & ~FILE_H) << 9) & enemies;
+
+            
+
         } else {
             single_pushes = (pawns >> 8) & empty;
             // Only pawns that successfully moved to Rank 6 can push again to Rank 5
@@ -43,26 +56,80 @@ namespace MoveGen {
             attacks_right = ((pawns & ~FILE_A) >> 9) & enemies;
         }
 
-        // --- Serialization Loop ---
-        // (For Phase 0, we are registering the 'To' squares. Full 16-bit Move packing 
-        // including 'From' squares and Promotion flags will be wired next).
-        
-        uint64_t pushes = single_pushes | double_pushes;
-        while (pushes) {
-            int to_square = Bitboard::pop_lsb(pushes);
-            list.add(to_square); // Temporarily storing just the destination
+        auto add_pawn_move = [&](int from_square, int to_square, Meti::MoveFlag flag) {
+            list.add(Meti::create_move(from_square, to_square, flag));
+        };
+
+        if (board.state.enPassantSquare != Meti::SQ_NONE) {
+            int ep_square = board.state.enPassantSquare;
+            uint64_t ep_mask = 1ULL << ep_square;
+
+            if constexpr (Us == WHITE) {
+                uint64_t ep_sources = 0;
+                if ((ep_mask & ~FILE_H) != 0) ep_sources |= (ep_mask >> 7) & pawns;
+                if ((ep_mask & ~FILE_A) != 0) ep_sources |= (ep_mask >> 9) & pawns;
+
+                while (ep_sources) {
+                    int from_square = Bitboard::pop_lsb(ep_sources);
+                    add_pawn_move(from_square, ep_square, Meti::MOVE_CAPTURE);
+                }
+            } else {
+                uint64_t ep_sources = 0;
+                if ((ep_mask & ~FILE_A) != 0) ep_sources |= (ep_mask << 7) & pawns;
+                if ((ep_mask & ~FILE_H) != 0) ep_sources |= (ep_mask << 9) & pawns;
+
+                while (ep_sources) {
+                    int from_square = Bitboard::pop_lsb(ep_sources);
+                    add_pawn_move(from_square, ep_square, Meti::MOVE_CAPTURE);
+                }
+            }
         }
 
-        uint64_t attacks = attacks_left | attacks_right;
-        while (attacks) {
-            int to_square = Bitboard::pop_lsb(attacks);
-            list.add(to_square);
+        while (single_pushes) {
+            int to_square = Bitboard::pop_lsb(single_pushes);
+            int from_square = (Us == WHITE) ? (to_square - 8) : (to_square + 8);
+            if (Bitboard::check_bit(PromotionRank, to_square)) {
+                add_promotion_moves(list, from_square, to_square, Meti::MOVE_QUIET);
+            } else {
+                add_pawn_move(from_square, to_square, Meti::MOVE_QUIET);
+            }
+        }
+
+        while (double_pushes) {
+            int to_square = Bitboard::pop_lsb(double_pushes);
+            int from_square = (Us == WHITE) ? (to_square - 16) : (to_square + 16);
+            add_pawn_move(from_square, to_square, Meti::MOVE_DOUBLE_PUSH);
+        }
+
+        while (attacks_left) {
+            int to_square = Bitboard::pop_lsb(attacks_left);
+            int from_square = (Us == WHITE) ? (to_square - 7) : (to_square + 7);
+            if (Bitboard::check_bit(pawns, from_square)) {
+                if (Bitboard::check_bit(PromotionRank, to_square)) {
+                    add_promotion_moves(list, from_square, to_square, Meti::MOVE_CAPTURE);
+                } else {
+                    add_pawn_move(from_square, to_square, Meti::MOVE_CAPTURE);
+                }
+            }
+        }
+
+        while (attacks_right) {
+            int to_square = Bitboard::pop_lsb(attacks_right);
+            int from_square = (Us == WHITE) ? (to_square - 9) : (to_square + 9);
+            if (Bitboard::check_bit(pawns, from_square)) {
+                if (Bitboard::check_bit(PromotionRank, to_square)) {
+                    add_promotion_moves(list, from_square, to_square, Meti::MOVE_CAPTURE);
+                } else {
+                    add_pawn_move(from_square, to_square, Meti::MOVE_CAPTURE);
+                }
+            }
         }
     }
 
     template <Colour Us>
     inline void generate_knights(const Board& board, Meti::MoveList& list) {
         constexpr Piece OurKnight = (Us == WHITE) ? W_KNIGHT : B_KNIGHT;
+        constexpr Colour Them = (Us == WHITE) ? BLACK : WHITE;
         
         uint64_t knights = board.bitboards[OurKnight];
         
@@ -77,7 +144,10 @@ namespace MoveGen {
 
             while (attacks) {
                 int to_square = Bitboard::pop_lsb(attacks);
-                list.add(to_square);
+                Meti::MoveFlag flag = Bitboard::check_bit(board.occupancy[Them], to_square)
+                    ? Meti::MOVE_CAPTURE
+                    : Meti::MOVE_QUIET;
+                list.add(Meti::create_move(from_square, to_square, flag));
             }
         }
     }
@@ -95,7 +165,10 @@ namespace MoveGen {
 
         while (attacks) {
             int to_square = Bitboard::pop_lsb(attacks);
-            list.add(to_square);
+            Meti::MoveFlag flag = Bitboard::check_bit(board.occupancy[Enemy], to_square)
+                ? Meti::MOVE_CAPTURE
+                : Meti::MOVE_QUIET;
+            list.add(Meti::create_move(from_square, to_square, flag));
         }
 
         // 2. Castling
@@ -113,19 +186,19 @@ namespace MoveGen {
 
         if constexpr (Us == WHITE) {
             if (can_castle(Castling::WK, 0x60ULL, 4, 5, -1)) {
-                list.add(6); // G1
+                list.add(Meti::create_move(4, 6, Meti::MOVE_CASTLING)); // E1 -> G1
             }
 
             if (can_castle(Castling::WQ, 0x0EULL, 4, 3, 2)) {
-                list.add(2); // C1
+                list.add(Meti::create_move(4, 2, Meti::MOVE_CASTLING)); // E1 -> C1
             }
         } else {
             if (can_castle(Castling::BK, 0x6000000000000000ULL, 60, 61, -1)) {
-                list.add(62); // G8
+                list.add(Meti::create_move(60, 62, Meti::MOVE_CASTLING)); // E8 -> G8
             }
 
             if (can_castle(Castling::BQ, 0x0E00000000000000ULL, 60, 59, 58)) {
-                list.add(58); // C8
+                list.add(Meti::create_move(60, 58, Meti::MOVE_CASTLING)); // E8 -> C8
             }
         }
     }
@@ -135,6 +208,7 @@ namespace MoveGen {
         constexpr Piece OurRook   = (Us == WHITE) ? W_ROOK   : B_ROOK;
         constexpr Piece OurBishop = (Us == WHITE) ? W_BISHOP : B_BISHOP;
         constexpr Piece OurQueen  = (Us == WHITE) ? W_QUEEN  : B_QUEEN;
+        constexpr Colour Them = (Us == WHITE) ? BLACK : WHITE;
 
         uint64_t occ = board.occupancy[2];
         uint64_t valid_squares = ~board.occupancy[Us]; // We can capture enemies, but not our own
@@ -150,7 +224,13 @@ namespace MoveGen {
             attacks |= get_ray_attacks(sq, Attacks::WEST,  occ);
             
             attacks &= valid_squares;
-            while (attacks) list.add(Bitboard::pop_lsb(attacks));
+            while (attacks) {
+                int to_square = Bitboard::pop_lsb(attacks);
+                Meti::MoveFlag flag = Bitboard::check_bit(board.occupancy[Them], to_square)
+                    ? Meti::MOVE_CAPTURE
+                    : Meti::MOVE_QUIET;
+                list.add(Meti::create_move(sq, to_square, flag));
+            }
         }
 
         // BISHOPS (Diagonal)
@@ -164,7 +244,13 @@ namespace MoveGen {
             attacks |= get_ray_attacks(sq, Attacks::SW, occ);
 
             attacks &= valid_squares;
-            while (attacks) list.add(Bitboard::pop_lsb(attacks));
+            while (attacks) {
+                int to_square = Bitboard::pop_lsb(attacks);
+                Meti::MoveFlag flag = Bitboard::check_bit(board.occupancy[Them], to_square)
+                    ? Meti::MOVE_CAPTURE
+                    : Meti::MOVE_QUIET;
+                list.add(Meti::create_move(sq, to_square, flag));
+            }
         }
     }
 
@@ -172,9 +258,6 @@ namespace MoveGen {
     // The templated core logic (Branchless colour evaluation)
     template <Colour Us>
     inline void generate_pseudo_legal_moves(const Board& board, Meti::MoveList& list) {
-        // We will define constexpr opposing colour at compile time
-        constexpr Colour Them = (Us == WHITE) ? BLACK : WHITE;
-
         // 1. Pawn Pushes & Captures
         generate_pawns<Us>(board, list);
         // 2. Knight Step-Attacks
