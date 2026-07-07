@@ -91,7 +91,7 @@ void unmake_move(Board& board, Meti::Move move) {
     if (board.state.capturedPiece != PIECE_NONE) {
         int capture_sq = to;
         if (flag == Meti::MOVE_CAPTURE && previous_state.enPassantSquare == to) {
-            capture_sq = (board.state.sideToMove == WHITE) ? (to - 8) : (to + 8);
+            capture_sq = (board.state.sideToMove == BLACK) ? (to - 8) : (to + 8);
         }
         board.bitboards[board.state.capturedPiece] ^= (1ULL << capture_sq);
         board.occupancy[board.state.sideToMove] ^= (1ULL << capture_sq);
