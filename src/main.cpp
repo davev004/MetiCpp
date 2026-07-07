@@ -1,6 +1,8 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <chrono>
+#include <perft.hpp>
 #include "constants.hpp"
 #include "types.hpp"
 #include "zobrist.hpp"
@@ -39,6 +41,21 @@ int main() {
         std::cout << "Zobrist Key: 0x" << std::hex << board.state.zobristKey << std::dec << "\n";
         std::cout << "--------------------------------------------------\n";
     }
+    // Example: Test a specific position
+    std::string start_fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    FEN::parse(board, start_fen);
+
+    int depth = 3;
+    auto start = std::chrono::high_resolution_clock::now();
+    uint64_t nodes = Perft::run(board, depth);
+    auto end = std::chrono::high_resolution_clock::now();
+    
+    std::chrono::duration<double> diff = end - start;
+    std::cout << "Perft depth " << depth << ": " << nodes << " nodes in " << diff.count() << "s\n";
+
+    return 0;
+
+    
 
     return 0;
 }
