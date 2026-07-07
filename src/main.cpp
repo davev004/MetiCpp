@@ -20,7 +20,7 @@ int main() {
     FEN::parse(board, start_fen);
 
     std::cout << "Perft nodes by depth for: " << start_fen << "\n";
-    for (int depth = 1; depth <= 10; ++depth) {
+    for (int depth = 1; depth <= 5; ++depth) {
         auto start = std::chrono::high_resolution_clock::now();
         uint64_t nodes = Perft::run(board, depth);
         auto end = std::chrono::high_resolution_clock::now();
@@ -29,6 +29,9 @@ int main() {
         std::cout << "Depth " << depth << ": " << nodes << " nodes";
         std::cout << " (" << elapsed_ms << " ms)\n";
     }
-
+    
+    std::cout << "\n===== PERFT DIVIDE (Depth 5) =====\n";
+    Perft::divide(board, 5);
+    
     return 0;
 }
