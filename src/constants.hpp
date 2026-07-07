@@ -12,4 +12,16 @@ namespace Meti {
     
     // Square Constants (A1 = LSB)
     constexpr int SQ_NONE = 64;          // Used for null en-passant squares
+
+    // Branchless Castling Rights Update Masks
+    constexpr uint8_t CASTLE_RIGHTS_UPDATE[64] = {
+        13, 15, 15, 15, 12, 15, 15, 14,  // a1 to h1
+        15, 15, 15, 15, 15, 15, 15, 15,
+        15, 15, 15, 15, 15, 15, 15, 15,
+        15, 15, 15, 15, 15, 15, 15, 15,
+        15, 15, 15, 15, 15, 15, 15, 15,
+        15, 15, 15, 15, 15, 15, 15, 15,
+        15, 15, 15, 15, 15, 15, 15, 15,
+         7, 15, 15, 15,  3, 15, 15, 11   // a8 to h8
+    };
 }

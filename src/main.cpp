@@ -16,11 +16,11 @@ int main() {
     Zobrist::init();
 
     Board board;
-    std::string start_fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    std::string start_fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
     FEN::parse(board, start_fen);
 
     std::cout << "Perft nodes by depth for: " << start_fen << "\n";
-    for (int depth = 1; depth <= 5; ++depth) {
+    for (int depth = 1; depth <= 8; ++depth) {
         auto start = std::chrono::high_resolution_clock::now();
         uint64_t nodes = Perft::run(board, depth);
         auto end = std::chrono::high_resolution_clock::now();
@@ -30,8 +30,8 @@ int main() {
         std::cout << " (" << elapsed_ms << " ms)\n";
     }
     
-    std::cout << "\n===== PERFT DIVIDE (Depth 5) =====\n";
-    Perft::divide(board, 5);
-    
+    //std::cout << "\n===== PERFT DIVIDE (Depth 5) =====\n";
+    //Perft::divide(board, 5);
+
     return 0;
 }

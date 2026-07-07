@@ -38,6 +38,10 @@ void make_move(Board& board, Meti::Move move) {
     if (board.state.enPassantSquare != Meti::SQ_NONE) 
         board.state.zobristKey ^= Zobrist::enPassantKeys[board.state.enPassantSquare % 8];
 
+    // --- NEW: Branchless Castling Rights Update ---
+    board.state.castlingRights &= Meti::CASTLE_RIGHTS_UPDATE[from];
+    board.state.castlingRights &= Meti::CASTLE_RIGHTS_UPDATE[to];
+
     // 4. Update State Flags
     board.state.capturedPiece = captured;
     board.state.enPassantSquare = Meti::SQ_NONE; // Reset by default
@@ -60,8 +64,26 @@ void make_move(Board& board, Meti::Move move) {
     if (flag == 1) { // Double Push
         board.state.enPassantSquare = (us == WHITE) ? (to - 8) : (to + 8);
     } else if (flag == 2) { // Castling
-        // Manually move the rook based on king 'to' square
-        // (Implementation omitted for brevity, logic identical to above)
+        // King is already moved by the primary from_to_mask. 
+        // We only need to move the Rook.
+        int rook_from, rook_to;
+        
+        // Determine Rook coordinates based on King's destination
+        if (to == 6)       { rook_from = 7;  rook_to = 5;  } // White Kingside (g1)
+        else if (to == 2)  { rook_from = 0;  rook_to = 3;  } // White Queenside (c1)
+        else if (to == 62) { rook_from = 63; rook_to = 61; } // Black Kingside (g8)
+        else               { rook_from = 56; rook_to = 59; } // Black Queenside (c8)
+
+        Piece rook = (us == WHITE) ? W_ROOK : B_ROOK;
+        uint64_t rook_mask = (1ULL << rook_from) | (1ULL << rook_to);
+
+        // Apply XOR to Bitboards and Occupancy
+        board.bitboards[rook] ^= rook_mask;
+        board.occupancy[us] ^= rook_mask;
+
+        // Apply XOR to Zobrist Keys
+        board.state.zobristKey ^= Zobrist::pieceKeys[rook][rook_from];
+        board.state.zobristKey ^= Zobrist::pieceKeys[rook][rook_to];
     }
 
     // 6. Final Zobrist Update
@@ -95,8 +117,22 @@ void unmake_move(Board& board, Meti::Move move) {
         }
         board.bitboards[board.state.capturedPiece] ^= (1ULL << capture_sq);
         board.occupancy[board.state.sideToMove] ^= (1ULL << capture_sq);
-    }
+    } else if (flag == Meti::MOVE_CASTLING) {
+        int rook_from, rook_to;
+        if (to == 6)       { rook_from = 7;  rook_to = 5;  } 
+        else if (to == 2)  { rook_from = 0;  rook_to = 3;  } 
+        else if (to == 62) { rook_from = 63; rook_to = 61; } 
+        else               { rook_from = 56; rook_to = 59; } 
 
+        // In unmake_move, the side that made the move is sideToMove ^ 1
+        Colour us = (board.state.sideToMove == WHITE) ? BLACK : WHITE;
+        Piece rook = (us == WHITE) ? W_ROOK : B_ROOK;
+        uint64_t rook_mask = (1ULL << rook_from) | (1ULL << rook_to);
+
+        board.bitboards[rook] ^= rook_mask;
+        board.occupancy[us] ^= rook_mask;
+    }
+    
     // 3. Restore State (Implicitly restores Zobrist Key, Castling, EP, Turn)
     board.state = previous_state;
     --board.ply;
