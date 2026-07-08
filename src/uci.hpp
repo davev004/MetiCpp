@@ -66,7 +66,7 @@ namespace UCI {
             } 
             else if (token == "uci") {
                 std::cout << "id name MetiC++\n";
-                std::cout << "id author David vaughan\n";
+                std::cout << "id author David Vaughan\n";
                 std::cout << "uciok\n";
             } 
             else if (token == "isready") {
