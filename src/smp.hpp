@@ -18,7 +18,7 @@ namespace SMP {
         int depth_offset = thread_id % 3; 
         
         // You will need to modify search_root to accept a starting depth
-        Search::search_root(local_board, max_depth, allocated_ms, local_nodes, depth_offset);
+        Search::search_root(local_board, max_depth, allocated_ms, local_nodes, depth_offset, false);
     }
 
     inline Meti::Move launch(Board& root_board, int max_depth, long long allocated_ms) {
@@ -38,7 +38,7 @@ namespace SMP {
         }
 
         uint64_t main_nodes = 0;
-        Meti::Move best_move = Search::search_root(root_board, max_depth, allocated_ms, main_nodes, 0);
+        Meti::Move best_move = Search::search_root(root_board, max_depth, allocated_ms, main_nodes, 0, true);
 
         Time::time_up = true;
 
