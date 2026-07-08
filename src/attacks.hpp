@@ -105,35 +105,36 @@ namespace Attacks {
     constexpr RayTable RAYS = RayTable();
 
 
-    // Moved from MoveGen to be globally accessible
-    inline uint64_t get_ray_attacks(int sq, Direction dir, uint64_t occ) {
-        uint64_t ray = RAYS.rays[dir][sq];
+    template <Direction Dir>
+    inline uint64_t get_ray_attacks(int sq, uint64_t occ) {
+        uint64_t ray = RAYS.rays[Dir][sq];
         uint64_t blockers = ray & occ;
 
         if (blockers) {
             int blocker_sq;
-            if (dir == NORTH || dir == EAST || dir == NE || dir == NW) {
-                blocker_sq = __builtin_ctzll(blockers); // Positive Ray (LSB)
+            // The CPU never sees this branch; it is resolved at compile-time.
+            if constexpr (Dir == NORTH || Dir == EAST || Dir == NE || Dir == NW) {
+                blocker_sq = __builtin_ctzll(blockers);
             } else {
-                blocker_sq = 63 - __builtin_clzll(blockers); // Negative Ray (MSB)
+                blocker_sq = 63 - __builtin_clzll(blockers);
             }
-            ray ^= RAYS.rays[dir][blocker_sq];
+            ray ^= RAYS.rays[Dir][blocker_sq];
         }
         return ray;
     }
     // Composite Attack Generators for Sliders
     inline uint64_t get_rook_attacks(int sq, uint64_t occ) {
-        return get_ray_attacks(sq, NORTH, occ) |
-               get_ray_attacks(sq, SOUTH, occ) |
-               get_ray_attacks(sq, EAST, occ)  |
-               get_ray_attacks(sq, WEST, occ);
+        return get_ray_attacks<NORTH>(sq, occ) |
+               get_ray_attacks<SOUTH>(sq, occ) |
+               get_ray_attacks<EAST>(sq, occ)  |
+               get_ray_attacks<WEST>(sq, occ);
     }
 
     inline uint64_t get_bishop_attacks(int sq, uint64_t occ) {
-        return get_ray_attacks(sq, NE, occ) |
-               get_ray_attacks(sq, NW, occ) |
-               get_ray_attacks(sq, SE, occ) |
-               get_ray_attacks(sq, SW, occ);
+        return get_ray_attacks<NE>(sq, occ) |
+               get_ray_attacks<NW>(sq, occ) |
+               get_ray_attacks<SE>(sq, occ) |
+               get_ray_attacks<SW>(sq, occ);
     }
 
     inline uint64_t get_queen_attacks(int sq, uint64_t occ) {
