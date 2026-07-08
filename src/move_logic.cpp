@@ -1,7 +1,9 @@
+
 #include "move_logic.hpp"
 #include "zobrist.hpp"
 #include "bitboard.hpp"
 #include "constants.hpp"
+#include <iostream>
 
 void make_move(Board& board, Meti::Move move) {
     int from = Meti::get_from(move);
@@ -53,15 +55,42 @@ void make_move(Board& board, Meti::Move move) {
 
     board.mailbox[from] = PIECE_NONE;
     board.mailbox[to] = moving;
+    // Handle Pawn Promotion Swap
+    if ((moving == W_PAWN || moving == B_PAWN) && ((1ULL << to) & 0xFF000000000000FFULL)) {
+        Meti::PromotionPiece prom = Meti::get_prom(move);
+        Piece promoted_to;
+        
+        if (us == WHITE) {
+            if (prom == Meti::PROMOTION_QUEEN) promoted_to = W_QUEEN;
+            else if (prom == Meti::PROMOTION_ROOK) promoted_to = W_ROOK;
+            else if (prom == Meti::PROMOTION_BISHOP) promoted_to = W_BISHOP;
+            else promoted_to = W_KNIGHT;
+        } else {
+            if (prom == Meti::PROMOTION_QUEEN) promoted_to = B_QUEEN;
+            else if (prom == Meti::PROMOTION_ROOK) promoted_to = B_ROOK;
+            else if (prom == Meti::PROMOTION_BISHOP) promoted_to = B_BISHOP;
+            else promoted_to = B_KNIGHT;
+        }
 
-    // Handle Capture
-    if (captured != PIECE_NONE) {
-        board.bitboards[captured] ^= (1ULL << capture_sq);
-        board.occupancy[us ^ 1] ^= (1ULL << capture_sq);
-        board.occupancy[2] ^= (1ULL << capture_sq); // Remove captured piece from total
-        board.mailbox[capture_sq] = (is_en_passant) ? PIECE_NONE : board.mailbox[capture_sq];
-        board.state.zobristKey ^= Zobrist::pieceKeys[captured][capture_sq];
+        // XOR out the Pawn, XOR in the Promoted piece
+        board.bitboards[moving] ^= (1ULL << to);
+        board.bitboards[promoted_to] ^= (1ULL << to);
+        
+        board.mailbox[to] = promoted_to;
+
+        // Fix Zobrist Keys
+        board.state.zobristKey ^= Zobrist::pieceKeys[moving][to];
+        board.state.zobristKey ^= Zobrist::pieceKeys[promoted_to][to];
     }
+    // Handle Capture
+// Handle Capture
+if (captured != PIECE_NONE) {
+    board.bitboards[captured] ^= (1ULL << capture_sq);
+    board.occupancy[us ^ 1] ^= (1ULL << capture_sq);
+    board.occupancy[2] ^= (1ULL << capture_sq);
+    board.mailbox[capture_sq] = (is_en_passant) ? PIECE_NONE : board.mailbox[capture_sq];
+    board.state.zobristKey ^= Zobrist::pieceKeys[captured][capture_sq];
+}
 
     // Handle Special Move Flags
     if (flag == Meti::MOVE_DOUBLE_PUSH) { 
@@ -88,20 +117,27 @@ void make_move(Board& board, Meti::Move move) {
         board.state.zobristKey ^= Zobrist::pieceKeys[rook][rook_to];
     }
 
-    // 5. Final Zobrist Update
+// 5. Final Zobrist Update
     board.state.zobristKey ^= Zobrist::pieceKeys[moving][to];
     board.state.zobristKey ^= Zobrist::castleKeys[board.state.castlingRights];
-    if (board.state.enPassantSquare != Meti::SQ_NONE) 
-        board.state.zobristKey ^= Zobrist::enPassantKeys[board.state.enPassantSquare % 8];
     
-    board.state.sideToMove ^= 1;
-
     // If a new EP square was created this turn, hash it in!
     if (board.state.enPassantSquare != Meti::SQ_NONE) {
         board.state.zobristKey ^= Zobrist::enPassantKeys[board.state.enPassantSquare % 8];
     }
+
+    for (int sq = 0; sq < 64; sq++) {
+    Piece p = board.mailbox[sq];
+
+    if (p != PIECE_NONE && (board.bitboards[p] & (1ULL << sq)) == 0) {
+        std::cout << "MAILBOX/BITBOARD DESYNC at square "
+                  << sq << " piece " << static_cast<int>(p) << "\n";
+        return;
+    }
+}
     
     board.state.sideToMove ^= 1;
+
 }
 
 void unmake_move(Board& board, Meti::Move move) {
@@ -131,7 +167,19 @@ void unmake_move(Board& board, Meti::Move move) {
     // If the moving piece was a pawn and it landed on Rank 1 or Rank 8
     if ((moving == W_PAWN || moving == B_PAWN) && ((1ULL << to) & 0xFF000000000000FFULL)) {
         Meti::PromotionPiece prom = Meti::get_prom(move);
-        Piece promoted_to = static_cast<Piece>((us == WHITE ? W_KNIGHT : B_KNIGHT) + static_cast<int>(prom));
+        Piece promoted_to;
+        
+        if (us == WHITE) {
+            if (prom == Meti::PROMOTION_QUEEN) promoted_to = W_QUEEN;
+            else if (prom == Meti::PROMOTION_ROOK) promoted_to = W_ROOK;
+            else if (prom == Meti::PROMOTION_BISHOP) promoted_to = W_BISHOP;
+            else promoted_to = W_KNIGHT;
+        } else {
+            if (prom == Meti::PROMOTION_QUEEN) promoted_to = B_QUEEN;
+            else if (prom == Meti::PROMOTION_ROOK) promoted_to = B_ROOK;
+            else if (prom == Meti::PROMOTION_BISHOP) promoted_to = B_BISHOP;
+            else promoted_to = B_KNIGHT;
+        }
 
         // XOR out the Promoted piece, XOR the Pawn back in
         board.bitboards[promoted_to] ^= (1ULL << to);

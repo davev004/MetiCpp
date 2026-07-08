@@ -11,7 +11,10 @@
 #include "fen.hpp"
 #include "debug.hpp" 
 
+
 int main() {
+
+
     // 1. Initialize Zobrist Keys (Must be done exactly once at startup)
     Zobrist::init();
 
@@ -20,7 +23,7 @@ int main() {
     FEN::parse(board, start_fen);
 
     std::cout << "Perft nodes by depth for: " << start_fen << "\n";
-    for (int depth = 1; depth <= 8; ++depth) {
+    for (int depth = 1; depth <= 5; ++depth) {
         auto start = std::chrono::high_resolution_clock::now();
         uint64_t nodes = Perft::run(board, depth);
         auto end = std::chrono::high_resolution_clock::now();
@@ -35,3 +38,4 @@ int main() {
 
     return 0;
 }
+

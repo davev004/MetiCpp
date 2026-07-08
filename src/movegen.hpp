@@ -30,7 +30,7 @@ namespace MoveGen {
         uint64_t pawns = board.bitboards[OurPawn];
         uint64_t empty = ~board.occupancy[2];
         uint64_t enemies = board.occupancy[Them];
-
+        //td::cout << "DEBUG: Generate pawns checking index " << OurPawn << " found " << pawns << std::endl;
         uint64_t single_pushes = 0, double_pushes = 0;
         uint64_t attacks_left = 0, attacks_right = 0;
 
@@ -53,6 +53,7 @@ namespace MoveGen {
         }
 
         auto add_pawn_move = [&](int from_square, int to_square, Piece captured, Meti::MoveFlag flag) {
+            //std::cout << "DEBUG: Adding move from " << from_square << " to " << to_square << std::endl;
             list.add(Meti::create_move(from_square, to_square, OurPawn, captured, flag));
         };
 
@@ -252,6 +253,13 @@ namespace MoveGen {
 
     // The runtime router: This is the only if/else branch the CPU has to evaluate.
     inline void generate(const Board& board, Meti::MoveList& list) {
+        // 1. Manually resolve the pawn enum for the debug print
+        Piece our_pawn = (board.state.sideToMove == WHITE) ? W_PAWN : B_PAWN;
+        
+        //std::cout << "DEBUG: Generating moves for side " << board.state.sideToMove 
+        //          << " with " << board.bitboards[our_pawn] << " pawns." << std::endl;
+
+        // 2. Dispatch to the template function using the runtime state
         if (board.state.sideToMove == WHITE) {
             generate_pseudo_legal_moves<WHITE>(board, list);
         } else {

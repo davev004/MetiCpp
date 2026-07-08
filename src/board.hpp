@@ -10,6 +10,12 @@ struct Board {
 
     // The O(1) Mailbox lookup array (64 bytes)
     Piece mailbox[64] = {PIECE_NONE};
+    //we need this when we initialise otherwise EVERYTHNG BREAKS and we segfault at like depth 5 perft
+    Board() {
+        for (int i = 0; i < 64; i++) {
+            mailbox[i] = PIECE_NONE;
+        }
+    }
 
     //Occupancy Bitboards (0 = White, 1 = Black, 2 = Both)
     uint64_t occupancy[3] = {0};

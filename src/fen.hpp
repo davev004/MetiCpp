@@ -42,6 +42,8 @@ namespace FEN {
                 if (p != PIECE_NONE) {
                     // Set the piece bitboard
                     Bitboard::set_bit(board.bitboards[p], square);
+
+                    board.mailbox[square] = p;
                     
                     // Update colour-specific occupancy
                     Colour pieceColour = (p <= W_KING) ? WHITE : BLACK;
