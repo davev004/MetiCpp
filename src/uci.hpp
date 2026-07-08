@@ -101,18 +101,20 @@ namespace UCI {
                 long long wtime = 0, btime = 0;
                 long long winc = 0, binc = 0;
                 long long allocated_ms = 5000; 
-
+                bool depth_only = false;
                 // 1. Parse all clock data sent by the GUI
                 while (ss >> token) {
-                    if (token == "depth") ss >> max_depth;
+                    if (token == "depth") { ss >> max_depth; depth_only = true; }
                     else if (token == "wtime") ss >> wtime;
                     else if (token == "btime") ss >> btime;
                     else if (token == "winc") ss >> winc;
                     else if (token == "binc") ss >> binc;
                 }
                 
-                // 2. Calculate time using: Base / 20 + Increment / 2
-                if (board.state.sideToMove == WHITE && wtime > 0) {
+                // 2. Time Allocation Logic
+                if (depth_only && wtime == 0 && btime == 0) {
+                    allocated_ms = 999999999; // Basically infinite time to reach the depth limit
+                } else if (board.state.sideToMove == WHITE && wtime > 0) {
                     allocated_ms = (wtime / 20) + (winc / 2);
                     if (allocated_ms > wtime - 50) allocated_ms = std::max(10LL, wtime - 50);
                 } else if (board.state.sideToMove == BLACK && btime > 0) {
