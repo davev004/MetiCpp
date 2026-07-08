@@ -10,10 +10,12 @@ namespace FEN {
     inline void parse(Board& board, const std::string& fen) {
         // 1. Clear ALL bitboards and occupancy
         for (int i = 0; i < Meti::NUM_PIECES; i++) board.bitboards[i] = 0;
+        for (int i = 0; i < 64; i++) board.mailbox[i] = PIECE_NONE;
         board.occupancy[WHITE] = 0;
         board.occupancy[BLACK] = 0;
         board.occupancy[2] = 0; 
         board.state = {}; 
+        board.ply = 0;
 
         std::istringstream ss(fen);
         std::string placement, color, castling, enPassant, halfMove, fullMove;
