@@ -9,11 +9,12 @@
 #include "fen.hpp"
 #include "search.hpp"
 #include "uci.hpp"
+#include "transitiontable.hpp"
 
 int main() {
     // 1. Initialise Zobrist Keys (Must be done exactly once at startup)
     Zobrist::init();
-
+    TT::allocate(64);
     UCI::loop();
 
     return 0;

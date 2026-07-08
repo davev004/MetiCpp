@@ -155,6 +155,15 @@ namespace UCI {
                         SMP::active_threads = std::max(1, std::min(t, SMP::MAX_THREADS));
                     }
                 }
+                else if (token == "Hash") {
+                    ss >> token; // Consume "value"
+                    int megabytes;
+                    if (ss >> megabytes) {
+                        // Protect against insane allocations (clamp between 1MB and 16384MB/16GB)
+                        megabytes = std::max(1, std::min(megabytes, 16384));
+                        TT::allocate(megabytes);
+                    }
+                }
             }
         }
     }
