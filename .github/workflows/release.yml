@@ -1,0 +1,70 @@
+name: Release MetiC++
+
+on:
+  push:
+    tags:
+      - 'v*' # Triggers automatically when you push a tag like 'v1.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }} - ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        arch: [popcnt, avx2, avx512]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Compile Engine
+        shell: bash
+        run: |
+          # 1. Select the correct branchless/hardware GCC flags
+          if [ "${{ matrix.arch }}" == "popcnt" ]; then
+            # Baseline x86-64 with population count (Required for your A8-7850K)
+            FLAGS="-O3 -march=x86-64 -mpopcnt"
+          elif [ "${{ matrix.arch }}" == "avx2" ]; then
+            # x86-64-v3 natively includes AVX2, BMI1/2, and POPCNT
+            FLAGS="-O3 -march=x86-64-v3" 
+          elif [ "${{ matrix.arch }}" == "avx512" ]; then
+            # x86-64-v4 natively includes AVX512
+            FLAGS="-O3 -march=x86-64-v4" 
+          fi
+
+          # 2. Define the output binary name
+          if [ "${{ matrix.os }}" == "windows-latest" ]; then
+            BIN_NAME="MetiCpp-${{ matrix.os }}-${{ matrix.arch }}.exe"
+          else
+            BIN_NAME="MetiCpp-${{ matrix.os }}-${{ matrix.arch }}"
+          fi
+
+          # 3. Compile all source files (using LTO for maximum performance)
+          g++ -std=c++17 -flto $FLAGS src/*.cpp -o $BIN_NAME
+
+      - name: Upload Binary to Job Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.os }}-${{ matrix.arch }}
+          path: MetiCpp-*
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all Compiled Binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: release_assets
+          merge-multiple: true
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release_assets/*
+          generate_release_notes: true
