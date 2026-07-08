@@ -96,13 +96,34 @@ namespace UCI {
                 }
             } 
             else if (token == "go") {
-                int depth = 5; 
+                int max_depth = 64; 
+                long long wtime = 0, btime = 0;
+                long long winc = 0, binc = 0;
+                long long allocated_ms = 5000; 
+
+                // 1. Parse all clock data sent by the GUI
                 while (ss >> token) {
-                    if (token == "depth") ss >> depth;
+                    if (token == "depth") ss >> max_depth;
+                    else if (token == "wtime") ss >> wtime;
+                    else if (token == "btime") ss >> btime;
+                    else if (token == "winc") ss >> winc;
+                    else if (token == "binc") ss >> binc;
                 }
                 
-                Meti::Move best_move = Search::search_root(board, depth);
+                // 2. Calculate time using: Base / 20 + Increment / 2
+                if (board.state.sideToMove == WHITE && wtime > 0) {
+                    allocated_ms = (wtime / 20) + (winc / 2);
+                    if (allocated_ms > wtime - 50) allocated_ms = std::max(10LL, wtime - 50);
+                } else if (board.state.sideToMove == BLACK && btime > 0) {
+                    allocated_ms = (btime / 20) + (binc / 2);
+                    if (allocated_ms > btime - 50) allocated_ms = std::max(10LL, btime - 50);
+                }
+
+                // 3. Run the Iterative Deepening search!
+                uint64_t nodes = 0;
+                Meti::Move best_move = Search::search_root(board, max_depth, allocated_ms, nodes);
                 
+                // 4. Translate internal move back to UCI string protocol
                 char from[3], to[3];
                 Meti::square_to_coord(Meti::get_from(best_move), from);
                 Meti::square_to_coord(Meti::get_to(best_move), to);
@@ -118,6 +139,7 @@ namespace UCI {
                     else prom = "n";
                 }
 
+                // 5. Fire it back to CuteChess
                 std::cout << "bestmove " << from << to << prom << std::endl;
             }
         }

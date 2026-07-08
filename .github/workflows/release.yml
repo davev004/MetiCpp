@@ -35,9 +35,9 @@ jobs:
 
           # 2. Define the clean output binary name
           if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            BIN_NAME="MetiCpp-windows-${{ github.ref_name }}-${{ matrix.arch }}.exe"
+            BIN_NAME="MetiC++-windows-${{ github.ref_name }}-${{ matrix.arch }}.exe"
           else
-            BIN_NAME="MetiCpp-linux-${{ github.ref_name }}-${{ matrix.arch }}"
+            BIN_NAME="MetiC++-linux-${{ github.ref_name }}-${{ matrix.arch }}"
           fi
 
           # 3. Compile all source files
@@ -53,7 +53,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: binary-${{ matrix.os }}-${{ matrix.arch }}
-          path: MetiCpp-*
+          path: MetiC++-*
 
   release:
     name: Create GitHub Release
