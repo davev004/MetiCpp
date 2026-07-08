@@ -39,3 +39,33 @@ inline bool is_legal(const Board& board, Meti::Move move) {
 
     return true;
 }
+
+inline bool is_valid_tt_move(const Board& board, Meti::Move move) {
+        if (move == 0) return false;
+
+        int from = Meti::get_from(move);
+        int to = Meti::get_to(move);
+        
+        // 1. Boundary Protection: Prevents array out-of-bounds
+        if (from < 0 || from > 63 || to < 0 || to > 63) return false;
+        
+        // 2. Physical Consistency: Does the moving piece actually exist here?
+        Piece moving = Meti::get_moving(move);
+        if (board.mailbox[from] != moving) return false;
+        
+        // 3. Ownership: Does this piece belong to the side to move?
+        Colour us = static_cast<Colour>(board.state.sideToMove);
+        Colour piece_colour = (moving <= W_KING) ? WHITE : BLACK;
+        if (us != piece_colour) return false;
+
+        // 4. Capture Consistency: If the move claims a capture, is the victim actually there?
+        // (Bypass for En Passant, as the victim is not on the 'to' square)
+        Piece captured = Meti::get_captured(move);
+        Meti::MoveFlag flag = Meti::get_flag(move);
+        
+        if (flag == Meti::MOVE_CAPTURE && captured != PIECE_NONE) {
+             if (board.mailbox[to] != captured) return false;
+        }
+
+    return true;
+}

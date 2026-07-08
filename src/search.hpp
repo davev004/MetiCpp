@@ -7,6 +7,8 @@
 #include "eval.hpp"
 #include "move_ordering.hpp"
 #include "time.hpp"
+#include "transitiontable.hpp"
+
 
 namespace Search {
     
@@ -86,19 +88,28 @@ namespace Search {
     // The Alpha-Beta Negamax Framework (Stateless & Recursive)
     inline int negamax(Board& board, int depth, int alpha, int beta, int ply, uint64_t& nodes) {
         Time::check(nodes);
-        if (Time::time_up) return 0; // Abort instantly if time is up
+        if (Time::time_up) return 0;
         
-        nodes++; // Increment the node count for performance tracking
-        
-        // Leaf node: return static evaluation
+        nodes++; 
         if (depth == 0) return quiescence(board, alpha, beta, nodes);
+
+        int alpha_orig = alpha; // Keep original alpha to determine TT bound later
+
+       // --- 1. PROBE THE TT ---
+        int tt_score;
+        Meti::Move tt_move = 0;
+        
+        if (TT::probe(board.state.zobristKey, depth, ply, alpha, beta, tt_score, tt_move)) {
+            return tt_score; // Hard cutoff confirmed safe by XOR
+        }
 
         Meti::MoveList list;
         MoveGen::generate(board, list);
-        MoveOrdering::sort_moves(board, list);
+        MoveOrdering::sort_moves(board, list, tt_move); // --- 2. PASS TT MOVE TO SORTER ---
 
         int legal_moves = 0;
         int best_score = -INF;
+        Meti::Move best_move = 0; // Track the best move for this node
 
         for (int i = 0; i < list.count; ++i) {
             Meti::Move move = list.moves[i];
@@ -110,63 +121,70 @@ namespace Search {
             }
             legal_moves++;
 
-            // Recursively search the resulting position. 
-            // Notice the window is inverted (-beta, -alpha) and the result is negated.
             int score = -negamax(board, depth - 1, -beta, -alpha, ply + 1, nodes);
-            
             unmake_move(board, move);
 
-            if (score > best_score) best_score = score;
+            if (score > best_score) {
+                best_score = score;
+                best_move = move; // Record the move that caused the score increase
+            }
             
-            // --- The "Two Lines" of Alpha-Beta Pruning ---
             if (best_score > alpha) alpha = best_score;
-            if (alpha >= beta) break; // A refutation was found; prune this branch!
+            if (alpha >= beta) break; // Beta cutoff
         }
 
-        // Terminal Node Detection (This is how the King is protected)
+        // --- Terminal Node Detection ---
         if (legal_moves == 0) {
             Colour opponent = static_cast<Colour>(board.state.sideToMove ^ 1);
             Piece our_king = (board.state.sideToMove == WHITE) ? W_KING : B_KING;
             uint64_t king_bb = board.bitboards[our_king];
             
-            if (king_bb == 0) return 0; // Failsafe
+            if (king_bb == 0) return 0;
             int king_sq = __builtin_ctzll(king_bb);
 
             bool in_check = (opponent == WHITE) ? 
                             Threats::is_square_attacked<WHITE>(board, king_sq) : 
                             Threats::is_square_attacked<BLACK>(board, king_sq);
 
-            if (in_check) {
-                // We are in checkmate. We return -MATE, but we add `ply` to the score.
-                // This ensures the engine prefers to mate the opponent as quickly as possible, 
-                // and delays getting mated for as long as possible.
-                return -MATE + ply; 
-            } else {
-                // Stalemate is a draw (0)
-                return 0; 
-            }
+            if (in_check) return -MATE + ply; 
+            else return 0; 
         }
+
+        // --- 3. STORE IN TT ---
+        TT::Bound bound;
+        if (best_score <= alpha_orig) {
+            bound = TT::BOUND_UPPER; // Fails low: all moves were worse than alpha
+        } else if (best_score >= beta) {
+            bound = TT::BOUND_LOWER; // Fails high: a move caused a beta cutoff
+        } else {
+            bound = TT::BOUND_EXACT; // PV node: score is exactly correct
+        }
+        
+        TT::store(board.state.zobristKey, depth, ply, best_score, best_move, bound);
 
         return best_score;
     }
 
-    // The Root function: Kicks off the search and remembers the actual move
-    inline Meti::Move search_root(Board& board, int max_depth, long long allocated_ms, uint64_t& nodes) {
-        Time::init(allocated_ms);
-
+    // Added depth_offset (defaults to 0 for single-threaded/main thread usage)
+    inline Meti::Move search_root(Board& board, int max_depth, long long allocated_ms, uint64_t& nodes, int depth_offset = 0) {
+        
         // --- HARDCODED 1.c4 OPENING ---
-        // If move 1, White to move, and a pawn is on c2 (index 10)
         if (board.state.fullMoveNumber == 1 && board.state.sideToMove == WHITE && board.mailbox[10] == W_PAWN) {
             return Meti::create_move(10, 26, W_PAWN, PIECE_NONE, Meti::MOVE_DOUBLE_PUSH);
         }
 
         Meti::Move best_move_overall = 0;
 
-        // --- ITERATIVE DEEPENING LOOP ---
-        for (int current_depth = 1; current_depth <= max_depth; current_depth++) {
+        // --- ITERATIVE DEEPENING LOOP (Desynced for SMP) ---
+        // Worker threads might start at depth 2 or 3, skipping the shallow searches 
+        // to race ahead and populate the TT for the main thread.
+        for (int current_depth = 1 + depth_offset; current_depth <= max_depth; current_depth++) {
             Meti::MoveList list;
             MoveGen::generate(board, list);
-            MoveOrdering::sort_moves(board, list);
+            
+            // To be strictly correct with our TT implementation, we should pass tt_move here.
+            // At the root, we don't have a tt_move yet, so we pass 0.
+            MoveOrdering::sort_moves(board, list, 0); 
 
             int best_score = -INF;
             Meti::Move best_move_this_depth = 0;
@@ -183,7 +201,6 @@ namespace Search {
                 int score = -negamax(board, current_depth - 1, -INF, INF, 1, nodes);
                 unmake_move(board, move);
 
-                // If we ran out of time mid-search, the scores are garbage. Break out.
                 if (Time::time_up) break;
 
                 if (score > best_score) {
@@ -192,14 +209,14 @@ namespace Search {
                 }
             }
 
-            // If time ran out during this depth, discard it entirely.
             if (Time::time_up) break;
 
-            // Otherwise, we completed the depth safely. Lock in the best move.
             best_move_overall = best_move_this_depth;
             
-            // Optional: Print UCI info per depth so CuteChess shows the engine thinking
-            std::cout << "info depth " << current_depth << " score cp " << best_score << " nodes " << nodes << "\n";
+            // Only the main thread (offset 0) should print UCI info to prevent terminal spam
+            if (depth_offset == 0) {
+                std::cout << "info depth " << current_depth << " score cp " << best_score << " nodes " << nodes << "\n";
+            }
         }
 
         return best_move_overall;

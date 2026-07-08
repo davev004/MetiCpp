@@ -16,7 +16,8 @@ namespace MoveOrdering {
     };
 
     // Fast, stateless move scorer
-    inline int score_move(const Board& board, Meti::Move move) {
+    inline int score_move(const Board& board, Meti::Move move, Meti::Move tt_move) {
+        if (move == tt_move) return 20000;
         int score = 0;
         Meti::MoveFlag flag = Meti::get_flag(move);
         Piece moving = Meti::get_moving(move);
@@ -48,12 +49,10 @@ namespace MoveOrdering {
     }
 
     // Zero-allocation stack sort (Insertion Sort is highly cache-friendly for small arrays < 256)
-    inline void sort_moves(const Board& board, Meti::MoveList& list) {
+    inline void sort_moves(const Board& board, Meti::MoveList& list, Meti::Move tt_move = 0) {
         int scores[256];
-        
-        // Score all moves
         for (int i = 0; i < list.count; i++) {
-            scores[i] = score_move(board, list.moves[i]);
+            scores[i] = score_move(board, list.moves[i], tt_move);
         }
 
         // Sort them descending

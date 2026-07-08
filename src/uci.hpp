@@ -7,6 +7,7 @@
 #include "search.hpp"
 #include "movegen.hpp"
 #include "move_logic.hpp"
+#include "smp.hpp"
 
 namespace UCI {
 
@@ -121,7 +122,7 @@ namespace UCI {
 
                 // 3. Run the Iterative Deepening search!
                 uint64_t nodes = 0;
-                Meti::Move best_move = Search::search_root(board, max_depth, allocated_ms, nodes);
+                Meti::Move best_move = SMP::launch(board, max_depth, allocated_ms);
                 
                 // 4. Translate internal move back to UCI string protocol
                 char from[3], to[3];
@@ -141,6 +142,19 @@ namespace UCI {
 
                 // 5. Fire it back to CuteChess
                 std::cout << "bestmove " << from << to << prom << std::endl;
+            }
+            else if (token == "setoption") {
+                ss >> token; // Consume "name"
+                ss >> token; // Read option name
+                
+                if (token == "Threads") {
+                    ss >> token; // Consume "value"
+                    int t;
+                    if (ss >> t) {
+                        // Clamp the value safely between 1 and our stack array limit
+                        SMP::active_threads = std::max(1, std::min(t, SMP::MAX_THREADS));
+                    }
+                }
             }
         }
     }
