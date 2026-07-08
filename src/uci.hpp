@@ -68,6 +68,11 @@ namespace UCI {
             else if (token == "uci") {
                 std::cout << "id name MetiC++\n";
                 std::cout << "id author David Vaughan\n";
+
+                std::cout << "option name Threads type spin default 1 min 1 max " << SMP::MAX_THREADS << "\n";
+                std::cout << "option name Hash type spin default 64 min 1 max 16384\n";
+
+                
                 std::cout << "uciok\n";
             } 
             else if (token == "isready") {
