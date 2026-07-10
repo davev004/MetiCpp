@@ -2,14 +2,28 @@
 #include <iostream>
 #include <string>
 #include <sstream>
+#include <thread>
+#include <atomic>
 #include "board.hpp"
 #include "fen.hpp"
 #include "search.hpp"
 #include "movegen.hpp"
 #include "move_logic.hpp"
 #include "smp.hpp"
+#include "time.hpp"
 
 namespace UCI {
+
+    // Thread management state
+    inline std::thread search_thread;
+    inline std::atomic<bool> is_searching{false};
+
+    inline void join_search() {
+        if (search_thread.joinable()) {
+            search_thread.join();
+        }
+        is_searching.store(false, std::memory_order_relaxed);
+    }
 
     // Helper to safely parse a string like "e2e4" or "e7e8q" into our 32-bit format
     inline Meti::Move parse_move(const Board& board, const std::string& move_str) {
@@ -52,26 +66,65 @@ namespace UCI {
         return 0; // Invalid move
     }
 
+    // The asynchronous worker function
+    inline void async_search_worker(Board board, int max_depth, long long allocated_ms) {
+        // Run the Iterative Deepening search!
+        Meti::Move best_move = SMP::launch(board, max_depth, allocated_ms);
+        
+        // Translate internal move back to UCI string protocol
+        char from[3], to[3];
+        Meti::square_to_coord(Meti::get_from(best_move), from);
+        Meti::square_to_coord(Meti::get_to(best_move), to);
+        
+        std::string prom = "";
+        Piece moving = Meti::get_moving(best_move);
+        
+        if ((moving == W_PAWN || moving == B_PAWN) && ((1ULL << Meti::get_to(best_move)) & 0xFF000000000000FFULL)) {
+            Meti::PromotionPiece p = Meti::get_prom(best_move);
+            if (p == Meti::PROMOTION_QUEEN) prom = "q";
+            else if (p == Meti::PROMOTION_ROOK) prom = "r";
+            else if (p == Meti::PROMOTION_BISHOP) prom = "b";
+            else prom = "n";
+        }
+
+        // Fire it back to CuteChess
+        std::cout << "bestmove " << from << to << prom << std::endl;
+        
+        is_searching.store(false, std::memory_order_relaxed);
+    }
+
     inline void loop() {
         Board board;
         std::string line, token;
 
         FEN::parse(board, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 
+        // Turn off sync for maximum I/O performance
+        std::ios_base::sync_with_stdio(false);
+
         while (std::getline(std::cin, line)) {
+            if (line.empty()) continue;
+
             std::istringstream ss(line);
             ss >> token;
 
             if (token == "quit") {
+                Time::time_up = true;
+                join_search();
                 break;
             } 
+            else if (token == "stop") {
+                if (is_searching.load(std::memory_order_relaxed)) {
+                    Time::time_up = true;
+                    join_search();
+                }
+            }
             else if (token == "uci") {
                 std::cout << "id name MetiC++\n";
                 std::cout << "id author David Vaughan\n";
 
                 std::cout << "option name Threads type spin default 1 min 1 max " << SMP::MAX_THREADS << "\n";
                 std::cout << "option name Hash type spin default 64 min 1 max 16384\n";
-
                 
                 std::cout << "uciok\n";
             } 
@@ -79,6 +132,12 @@ namespace UCI {
                 std::cout << "readyok\n";
             } 
             else if (token == "position") {
+                // Must stop thinking before modifying the board state
+                if (is_searching.load(std::memory_order_relaxed)) {
+                    Time::time_up = true;
+                    join_search();
+                }
+
                 ss >> token;
                 if (token == "startpos") {
                     FEN::parse(board, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
@@ -102,11 +161,15 @@ namespace UCI {
                 }
             } 
             else if (token == "go") {
+                // Safely clean up any dangling thread
+                join_search();
+
                 int max_depth = 64; 
                 long long wtime = 0, btime = 0;
                 long long winc = 0, binc = 0;
                 long long allocated_ms = 5000; 
                 bool depth_only = false;
+                
                 // 1. Parse all clock data sent by the GUI
                 while (ss >> token) {
                     if (token == "depth") { ss >> max_depth; depth_only = true; }
@@ -127,28 +190,9 @@ namespace UCI {
                     if (allocated_ms > btime - 50) allocated_ms = std::max(10LL, btime - 50);
                 }
 
-                // 3. Run the Iterative Deepening search!
-                uint64_t nodes = 0;
-                Meti::Move best_move = SMP::launch(board, max_depth, allocated_ms);
-                
-                // 4. Translate internal move back to UCI string protocol
-                char from[3], to[3];
-                Meti::square_to_coord(Meti::get_from(best_move), from);
-                Meti::square_to_coord(Meti::get_to(best_move), to);
-                
-                std::string prom = "";
-                Piece moving = Meti::get_moving(best_move);
-                
-                if ((moving == W_PAWN || moving == B_PAWN) && ((1ULL << Meti::get_to(best_move)) & 0xFF000000000000FFULL)) {
-                    Meti::PromotionPiece p = Meti::get_prom(best_move);
-                    if (p == Meti::PROMOTION_QUEEN) prom = "q";
-                    else if (p == Meti::PROMOTION_ROOK) prom = "r";
-                    else if (p == Meti::PROMOTION_BISHOP) prom = "b";
-                    else prom = "n";
-                }
-
-                // 5. Fire it back to CuteChess
-                std::cout << "bestmove " << from << to << prom << std::endl;
+                // 3. Launch asynchronously
+                is_searching.store(true, std::memory_order_relaxed);
+                search_thread = std::thread(async_search_worker, board, max_depth, allocated_ms);
             }
             else if (token == "setoption") {
                 ss >> token; // Consume "name"

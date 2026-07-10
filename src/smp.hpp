@@ -1,50 +1,114 @@
+#pragma once
 #include <thread>
-#include <vector>
+#include <condition_variable>
+#include <mutex>
+#include <atomic>
 #include "board.hpp"
 #include "search.hpp"
-#include "move.hpp"
+#include "time.hpp"
 
 namespace SMP {
-    constexpr int MAX_THREADS = 128; // Absolute maximum ceiling
-    inline int active_threads = 1;   // Default to standard single-threaded
+    constexpr int MAX_THREADS = 128;
+    inline int active_threads = 1;
 
-    inline void worker_search(Board local_board, int max_depth, long long allocated_ms, int thread_id) {
-        uint64_t local_nodes = 0;
-        
-        // Offset starting depths to force threads into different branches
-        // Thread 0 (Main) searches 1, 2, 3...
-        // Thread 1 searches 2, 3, 4...
-        // Thread 2 searches 3, 4, 5...
-        int depth_offset = thread_id % 3; 
-        
-        // You will need to modify search_root to accept a starting depth
-        Search::search_root(local_board, max_depth, allocated_ms, local_nodes, depth_offset, false);
+    // Thread pool state
+    inline std::thread workers[MAX_THREADS];
+    inline std::mutex smp_mutex;
+    inline std::condition_variable cv_wake;
+    inline std::condition_variable cv_done;
+
+    // Search parameters shared to workers
+    inline Board root_board;
+    inline int search_depth = 0;
+    inline long long search_time = 0;
+    
+    // Lock-free state management
+    inline std::atomic<int> threads_running{0};
+    inline std::atomic<bool> engine_running{true};
+    inline std::atomic<int> current_search_id{0}; 
+
+    inline void worker_search(int thread_id) {
+        int local_search_id = 0;
+
+        while (engine_running.load(std::memory_order_relaxed)) {
+            // 1. Sleep until a new search starts or the engine shuts down
+            std::unique_lock<std::mutex> lock(smp_mutex);
+            cv_wake.wait(lock, [&] { 
+                return current_search_id.load(std::memory_order_relaxed) != local_search_id 
+                    || !engine_running.load(std::memory_order_relaxed); 
+            });
+            lock.unlock();
+
+            if (!engine_running.load(std::memory_order_relaxed)) break;
+
+            // Only participate if this thread ID is within the active count
+            if (thread_id < active_threads) {
+                local_search_id = current_search_id.load(std::memory_order_relaxed);
+
+                // --- HOT PATH: COMPLETELY LOCK-FREE ---
+                // We create a local copy of the root board for this thread to mangle
+                Board local_board = root_board;
+                uint64_t local_nodes = 0;
+                int depth_offset = thread_id % 3; 
+                Search::search_root(local_board, search_depth, search_time, local_nodes, depth_offset, false);
+            } else {
+                // If the user reduced the thread count, just update ID and go back to sleep
+                local_search_id = current_search_id.load(std::memory_order_relaxed);
+            }
+
+            // 2. Signal that this thread has finished its work
+            threads_running.fetch_sub(1, std::memory_order_release);
+            cv_done.notify_all();
+        }
     }
 
-    inline Meti::Move launch(Board& root_board, int max_depth, long long allocated_ms) {
+    inline void init() {
+        // Thread 0 is the main thread, so workers are 1 to 127
+        for (int i = 1; i < MAX_THREADS; ++i) {
+            workers[i] = std::thread(worker_search, i);
+        }
+    }
+
+    inline void stop_all() {
+        engine_running.store(false, std::memory_order_relaxed);
+        cv_wake.notify_all();
+        for (int i = 1; i < MAX_THREADS; ++i) {
+            if (workers[i].joinable()) workers[i].join();
+        }
+    }
+
+    inline Meti::Move launch(Board& board, int max_depth, long long allocated_ms) {
         int worker_count = active_threads - 1;
+        
         if (worker_count <= 0) {
             // Fast path for 1 thread (No SMP overhead)
             Time::init(allocated_ms);
             uint64_t main_nodes = 0;
-            return Search::search_root(root_board, max_depth, allocated_ms, main_nodes, 0);
+            return Search::search_root(board, max_depth, allocated_ms, main_nodes, 0, true);
         }
 
-        Time::init(allocated_ms);
-        std::thread workers[MAX_THREADS];
+        // Setup parameters for the worker threads
+        root_board = board; 
+        search_depth = max_depth;
+        search_time = allocated_ms;
         
-        for (int i = 0; i < worker_count; ++i) {
-            workers[i] = std::thread(worker_search, root_board, max_depth, allocated_ms, i + 1);
-        }
+        Time::init(allocated_ms);
 
+        // Wake the exact number of workers we need
+        threads_running.store(worker_count, std::memory_order_release);
+        current_search_id.fetch_add(1, std::memory_order_release);
+        cv_wake.notify_all();
+
+        // Main thread (Thread 0) searches alongside them
         uint64_t main_nodes = 0;
-        Meti::Move best_move = Search::search_root(root_board, max_depth, allocated_ms, main_nodes, 0, true);
+        Meti::Move best_move = Search::search_root(board, max_depth, allocated_ms, main_nodes, 0, true);
 
-        Time::time_up = true;
+        // Time is up or depth reached; force workers to abort
+        Time::time_up.store(true, std::memory_order_relaxed);
 
-        for (int i = 0; i < worker_count; ++i) {
-            if (workers[i].joinable()) workers[i].join();
-        }
+        // Sleep the main thread until all workers safely exit the search tree
+        std::unique_lock<std::mutex> lock(smp_mutex);
+        cv_done.wait(lock, [] { return threads_running.load(std::memory_order_acquire) == 0; });
 
         return best_move;
     }
