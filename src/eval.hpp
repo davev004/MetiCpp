@@ -31,7 +31,7 @@
           0,   0,   0,   0,   0,   0,   0,   0,  // Rank 1 (Indices 0-7)
           5,  10,  -20, -5, -5,  10,  10,   5,  // Rank 2 (Indices 8-15) - discourage e2/d2 slightly to open bishop/queen lanes
           5,  -5, -10,   0,   0, -10,  -5,   5,  // Rank 3 (Indices 16-23)
-          0,   0,   30,  15,  214,   0,   0,   0,  // Rank 4 (Indices 24-31) - Encourage center pushes
+          0,   0,   30,  15,  15,   0,   0,   0,  // Rank 4 (Indices 24-31) - Encourage center pushes
           5,   5,  10,  25,  25,  10,   5,   5,  // Rank 5 (Indices 32-39)
          10,  10,  20,  30,  30,  20,  10,  10,  // Rank 6 (Indices 40-47)
          50,  50,  50,  50,  50,  50,  50,  50,  // Rank 7 (Indices 48-55) - Massive reward for getting pawns to the 7th rank!
@@ -178,6 +178,59 @@
 
         mg_score += castle_bonus;
         eg_score += castle_bonus;
+
+        // --- 5. Pawn Structure (Bitwise Parallel Support) ---
+        constexpr uint64_t NOT_FILE_A = 0xFEFEFEFEFEFEFEFEULL;
+        constexpr uint64_t NOT_FILE_H = 0x7F7F7F7F7F7F7F7FULL;
+
+        uint64_t w_pawns = board.bitboards[W_PAWN];
+        uint64_t b_pawns = board.bitboards[B_PAWN];
+
+        // White pawns attacking North-West (+7) and North-East (+9)
+        uint64_t w_support_mask = ((w_pawns & NOT_FILE_A) << 7) | ((w_pawns & NOT_FILE_H) << 9);
+        int w_supported = __builtin_popcountll(w_pawns & w_support_mask);
+
+        // Black pawns attacking South-East (-7) and South-West (-9)
+        uint64_t b_support_mask = ((b_pawns & NOT_FILE_H) >> 7) | ((b_pawns & NOT_FILE_A) >> 9);
+        int b_supported = __builtin_popcountll(b_pawns & b_support_mask);
+
+        // Award 15 centipawns per supported pawn
+        mg_score += (w_supported - b_supported) * 15;
+        eg_score += (w_supported - b_supported) * 15;
+
+
+        // --- 6. Mobility (Popcounting Attack Rays) ---
+        uint64_t occ = board.occupancy[2];
+
+        // Helper Lambda for branchless mobility scoring
+        auto score_mobility = [&](Piece piece, bool is_white, int mg_weight, int eg_weight, auto attack_func) {
+            uint64_t bb = board.bitboards[piece];
+            // We only count squares not occupied by our own pieces
+            uint64_t valid_squares = is_white ? ~board.occupancy[WHITE] : ~board.occupancy[BLACK];
+            
+            while (bb) {
+                int sq = __builtin_ctzll(bb);
+                int mobility = __builtin_popcountll(attack_func(sq, occ) & valid_squares);
+                
+                if (is_white) { mg_score += mobility * mg_weight; eg_score += mobility * eg_weight; }
+                else          { mg_score -= mobility * mg_weight; eg_score -= mobility * eg_weight; }
+                
+                bb &= bb - 1;
+            }
+        };
+
+        // Rooks: +2 cp per square in Middlegame, +4 in Endgame
+        score_mobility(W_ROOK, true,  2, 4, Attacks::get_rook_attacks);
+        score_mobility(B_ROOK, false, 2, 4, Attacks::get_rook_attacks);
+        
+        // Bishops: +3 cp per square in Middlegame, +3 in Endgame
+        score_mobility(W_BISHOP, true,  3, 3, Attacks::get_bishop_attacks);
+        score_mobility(B_BISHOP, false, 3, 3, Attacks::get_bishop_attacks);
+
+        // Queens: +1 cp per square in Middlegame, +2 in Endgame
+        score_mobility(W_QUEEN, true,  1, 2, Attacks::get_queen_attacks);
+        score_mobility(B_QUEEN, false, 1, 2, Attacks::get_queen_attacks);
+
 
         // 5. --- Final Interpolation ---
         int final_score = ((mg_score * mg_weight) + (eg_score * eg_weight)) / 256;
