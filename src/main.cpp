@@ -13,13 +13,20 @@
 #include "smp.hpp"
 
 int main() {
-    // 1. Initialise core systems
+    // Force immediate output to prove the binary is actually running
+    std::cout << "DEBUG: Engine started execution!" << std::endl;
+    
     Zobrist::init();
+    std::cout << "DEBUG: Zobrist initialized!" << std::endl;
+    
     TT::allocate(64);
-    SMP::init(); // Boot the persistent thread pool
+    std::cout << "DEBUG: TT allocated!" << std::endl;
+    
+    SMP::init(); 
+    std::cout << "DEBUG: SMP thread pool initialized!" << std::endl;
     
     UCI::loop();
 
-    SMP::stop_all(); // Clean shutdown when quit is received
+    SMP::stop_all(); 
     return 0;
 }

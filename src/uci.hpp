@@ -100,25 +100,18 @@ namespace UCI {
 
         FEN::parse(board, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 
-        // Inside UCI::loop()
-        Logger::init("meticpp_uci.log"); // Initialise log
-
-        while (std::getline(std::cin, line)) {
-            if (line.empty()) continue;
-            
-            Logger::write("GUI -> ", line); // Log inbound commands
-
-            std::istringstream ss(line);
-            ss >> token;
-            // ... rest of the parsing ...
-        }
-
-
         // Turn off sync for maximum I/O performance
         std::ios_base::sync_with_stdio(false);
 
+        // Initialise log once before the loop
+        Logger::init("meticpp_uci.log"); 
+
+        // THE ONLY WHILE LOOP
         while (std::getline(std::cin, line)) {
             if (line.empty()) continue;
+
+            // Log every inbound command from the GUI
+            Logger::write("GUI -> ", line); 
 
             std::istringstream ss(line);
             ss >> token;
@@ -141,13 +134,12 @@ namespace UCI {
                 std::cout << "option name Threads type spin default 1 min 1 max " << SMP::MAX_THREADS << "\n";
                 std::cout << "option name Hash type spin default 64 min 1 max 16384\n";
                 
-                std::cout << "uciok\n";
+                std::cout << "uciok" << std::endl;
             } 
             else if (token == "isready") {
-                std::cout << "readyok\n";
+                std::cout << "readyok" << std::endl;
             } 
             else if (token == "position") {
-                // Must stop thinking before modifying the board state
                 if (is_searching.load(std::memory_order_relaxed)) {
                     Time::time_up = true;
                     join_search();
@@ -167,7 +159,6 @@ namespace UCI {
                     ss >> token; // Consume "moves"
                 }
                 
-                // --- THE NEW PARSER INTEGRATION ---
                 while (ss >> token) {
                     Meti::Move parsed_move = parse_move(board, token);
                     if (parsed_move != 0) {
@@ -176,7 +167,6 @@ namespace UCI {
                 }
             } 
             else if (token == "go") {
-                // Safely clean up any dangling thread
                 join_search();
 
                 int max_depth = 64; 
@@ -185,7 +175,6 @@ namespace UCI {
                 long long allocated_ms = 5000; 
                 bool depth_only = false;
                 
-                // 1. Parse all clock data sent by the GUI
                 while (ss >> token) {
                     if (token == "depth") { ss >> max_depth; depth_only = true; }
                     else if (token == "wtime") ss >> wtime;
@@ -194,9 +183,8 @@ namespace UCI {
                     else if (token == "binc") ss >> binc;
                 }
                 
-                // 2. Time Allocation Logic
                 if (depth_only && wtime == 0 && btime == 0) {
-                    allocated_ms = 999999999; // Basically infinite time to reach the depth limit
+                    allocated_ms = 999999999;
                 } else if (board.state.sideToMove == WHITE && wtime > 0) {
                     allocated_ms = (wtime / 20) + (winc / 2);
                     if (allocated_ms > wtime - 50) allocated_ms = std::max(10LL, wtime - 50);
@@ -205,7 +193,6 @@ namespace UCI {
                     if (allocated_ms > btime - 50) allocated_ms = std::max(10LL, btime - 50);
                 }
 
-                // 3. Launch asynchronously
                 is_searching.store(true, std::memory_order_relaxed);
                 search_thread = std::thread(async_search_worker, board, max_depth, allocated_ms);
             }
@@ -217,15 +204,13 @@ namespace UCI {
                     ss >> token; // Consume "value"
                     int t;
                     if (ss >> t) {
-                        // Clamp the value safely between 1 and our stack array limit
-                        SMP::active_threads = std::max(1, std::min(t, SMP::MAX_THREADS));
+                        SMP::set_threads(t); // Using the new dynamic thread spawner!
                     }
                 }
                 else if (token == "Hash") {
                     ss >> token; // Consume "value"
                     int megabytes;
                     if (ss >> megabytes) {
-                        // Protect against insane allocations (clamp between 1MB and 16384MB/16GB)
                         megabytes = std::max(1, std::min(megabytes, 16384));
                         TT::allocate(megabytes);
                     }
