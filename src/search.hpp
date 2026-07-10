@@ -15,7 +15,7 @@ namespace Search {
     constexpr int INF = 32000;
     constexpr int MATE = 30000;
 
-    inline int quiescence(Board& board, int alpha, int beta, uint64_t& nodes) {
+    inline int quiescence(Board& board, int alpha, int beta, int ply, uint64_t& nodes) {
         Time::check(nodes);
         if (Time::time_up) return 0; // Abort instantly if time is up
     
@@ -70,7 +70,7 @@ namespace Search {
             }
             legal_moves++;
 
-            int score = -quiescence(board, -beta, -alpha, nodes);
+            int score = -quiescence(board, -beta, -alpha, ply + 1, nodes);
             unmake_move(board, move);
 
             if (score >= beta) return beta;
@@ -90,8 +90,15 @@ namespace Search {
         Time::check(nodes);
         if (Time::time_up) return 0;
         
-        nodes++; 
-        if (depth == 0) return quiescence(board, alpha, beta, nodes);
+        nodes++;
+        
+        // 1. Bound the search window to find the shortest mate
+        int mate_value = MATE - ply;
+        if (alpha < -mate_value) alpha = -mate_value;
+        if (beta > mate_value - 1) beta = mate_value - 1;
+        if (alpha >= beta) return alpha;
+
+        if (depth == 0) return quiescence(board, alpha, beta, ply, nodes);
 
         int alpha_orig = alpha; // Keep original alpha to determine TT bound later
 
@@ -167,33 +174,27 @@ namespace Search {
 
     // Added depth_offset (defaults to 0 for single-threaded/main thread usage)
     inline Meti::Move search_root(Board& board, int max_depth, long long allocated_ms, uint64_t& nodes, int depth_offset = 0, bool is_main_thread = true) {
-
         Meti::Move best_move_overall = 0;
 
-        // --- ITERATIVE DEEPENING LOOP (Desynced for SMP) ---
-        // Worker threads might start at depth 2 or 3, skipping the shallow searches 
-        // to race ahead and populate the TT for the main thread.
         for (int current_depth = 1 + depth_offset; current_depth <= max_depth; current_depth++) {
             Meti::MoveList list;
             MoveGen::generate(board, list);
             
-            // To be strictly correct with our TT implementation, we should pass tt_move here.
-            // At the root, we don't have a tt_move yet, so we pass 0.
-            MoveOrdering::sort_moves(board, list, 0); 
+            // Pass the previous depth's best move to sort it first
+            MoveOrdering::sort_moves(board, list, best_move_overall); 
 
+            int alpha = -INF;
+            int beta = INF;
             int best_score = -INF;
             Meti::Move best_move_this_depth = 0;
 
             for (int i = 0; i < list.count; i++) {
                 Meti::Move move = list.moves[i];
-                
                 make_move(board, move);
-                if (!is_legal(board, move)) {
-                    unmake_move(board, move);
-                    continue;
-                }
+                if (!is_legal(board, move)) { unmake_move(board, move); continue; }
 
-                int score = -negamax(board, current_depth - 1, -INF, INF, 1, nodes);
+                // Pass dynamic -beta and -alpha, NOT -INF and INF
+                int score = -negamax(board, current_depth - 1, -beta, -alpha, 1, nodes);
                 unmake_move(board, move);
 
                 if (Time::time_up) break;
@@ -202,18 +203,16 @@ namespace Search {
                     best_score = score;
                     best_move_this_depth = move;
                 }
+                if (best_score > alpha) alpha = best_score; // Shrink the root window!
             }
 
             if (Time::time_up) break;
-
             best_move_overall = best_move_this_depth;
             
-            // Only the main thread (offset 0) should print UCI info to prevent terminal spam
             if (is_main_thread) {
                 std::cout << "info depth " << current_depth << " score cp " << best_score << " nodes " << nodes << std::endl;
             }
         }
-
         return best_move_overall;
     }
 }

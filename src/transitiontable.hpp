@@ -37,49 +37,45 @@ namespace TT {
                (static_cast<uint64_t>(bound) << 56);
     }
 
+    constexpr int MATE_BOUND = 29000; 
+
     inline void store(uint64_t key, int depth, int ply, int score, Meti::Move move, Bound bound) {
         Entry& tt_entry = table[key % num_entries];
 
-        uint64_t signature = make_signature(move, static_cast<int16_t>(score), static_cast<uint8_t>(depth), bound);
+        // Convert score to be independent of the current search depth
+        int16_t stored_score = score;
+        if (score > MATE_BOUND) stored_score += ply;
+        else if (score < -MATE_BOUND) stored_score -= ply;
 
-        // We write the payload data first
+        uint64_t signature = make_signature(move, stored_score, static_cast<uint8_t>(depth), bound);
+
         tt_entry.move = move;
-        tt_entry.score = static_cast<int16_t>(score);
+        tt_entry.score = stored_score;
         tt_entry.depth = static_cast<uint8_t>(depth);
         tt_entry.bound = bound;
-        
-        // Then we seal it with the XOR signature. 
-        // A torn read will almost certainly pull mismatched data vs key.
         tt_entry.key = key ^ signature;
     }
 
     inline bool probe(uint64_t key, int depth, int ply, int alpha, int beta, int& out_score, Meti::Move& out_move) {
-        // Volatile copy forces the compiler to pull the 16 bytes exactly as they sit in memory right now
         volatile Entry temp = table[key % num_entries];
         Entry tt_entry = *const_cast<Entry*>(&temp);
-
-        // Reconstruct the signature from the data we just pulled
         uint64_t signature = make_signature(tt_entry.move, tt_entry.score, tt_entry.depth, tt_entry.bound);
 
-        // If the Key ^ Signature matches our queried Zobrist key, the read was perfectly atomic!
         if ((tt_entry.key ^ signature) == key) {
             out_move = tt_entry.move;
 
-            if (tt_entry.depth >= depth) {
+            bool is_mate_score = (tt_entry.score > MATE_BOUND || tt_entry.score < -MATE_BOUND);
+
+            if (tt_entry.depth >= depth || is_mate_score) {
                 int score = tt_entry.score;
 
-                if (tt_entry.bound == BOUND_EXACT) {
-                    out_score = score;
-                    return true;
-                }
-                if (tt_entry.bound == BOUND_LOWER && score >= beta) {
-                    out_score = score;
-                    return true;
-                }
-                if (tt_entry.bound == BOUND_UPPER && score <= alpha) {
-                    out_score = score;
-                    return true;
-                }
+                // Re-adjust mate score relative to current ply
+                if (score > MATE_BOUND) score -= ply;
+                else if (score < -MATE_BOUND) score += ply;
+
+                if (tt_entry.bound == BOUND_EXACT) { out_score = score; return true; }
+                if (tt_entry.bound == BOUND_LOWER && score >= beta) { out_score = score; return true; }
+                if (tt_entry.bound == BOUND_UPPER && score <= alpha) { out_score = score; return true; }
             }
         }
         return false;
