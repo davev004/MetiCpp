@@ -7,6 +7,7 @@
 #include "board.hpp"
 #include "search.hpp"
 #include "time.hpp"
+#include "logger.hpp"
 
 namespace SMP {
     constexpr int MAX_THREADS = 128;
