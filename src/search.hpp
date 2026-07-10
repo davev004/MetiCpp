@@ -85,6 +85,21 @@ namespace Search {
         return alpha;
     }
 
+    inline bool is_repetition(const Board& board) {
+        // We only need to check back as far as the last irreversible move (capture/pawn push)
+        int limit = board.ply - board.state.halfMoveClock;
+        if (limit < 0) limit = 0;
+
+        // Check our previous turns (stepping back by 2 plies)
+        for (int i = board.ply - 2; i >= limit; i -= 2) {
+            if (board.history[i].zobristKey == board.state.zobristKey) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
     // The Alpha-Beta Negamax Framework (Stateless & Recursive)
     inline int negamax(Board& board, int depth, int alpha, int beta, int ply, uint64_t& nodes) {
         Time::check(nodes);
@@ -92,6 +107,12 @@ namespace Search {
         
         nodes++;
         
+        // --- 1. DRAW DETECTION (Repetition & 50-Move Rule) ---
+        // If we are caught in a loop or hit 50 moves, score it as a 0 (Draw)
+        if (board.state.halfMoveClock >= 100 || is_repetition(board)) {
+            return 0; 
+        }
+
         // 1. Bound the search window to find the shortest mate
         int mate_value = MATE - ply;
         if (alpha < -mate_value) alpha = -mate_value;
