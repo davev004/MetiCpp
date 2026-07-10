@@ -31,7 +31,6 @@ namespace SMP {
         int local_search_id = 0;
 
         while (engine_running.load(std::memory_order_relaxed)) {
-            // 1. Sleep until a new search starts or the engine shuts down
             std::unique_lock<std::mutex> lock(smp_mutex);
             cv_wake.wait(lock, [&] { 
                 return current_search_id.load(std::memory_order_relaxed) != local_search_id 
@@ -41,24 +40,22 @@ namespace SMP {
 
             if (!engine_running.load(std::memory_order_relaxed)) break;
 
-            // Only participate if this thread ID is within the active count
             if (thread_id < active_threads) {
                 local_search_id = current_search_id.load(std::memory_order_relaxed);
 
                 // --- HOT PATH: COMPLETELY LOCK-FREE ---
-                // We create a local copy of the root board for this thread to mangle
                 Board local_board = root_board;
                 uint64_t local_nodes = 0;
                 int depth_offset = thread_id % 3; 
                 Search::search_root(local_board, search_depth, search_time, local_nodes, depth_offset, false);
+                
+                // Only active threads should signal that they have finished their work
+                threads_running.fetch_sub(1, std::memory_order_release);
+                cv_done.notify_all();
             } else {
-                // If the user reduced the thread count, just update ID and go back to sleep
+                // Inactive threads just update their ID and go back to sleep
                 local_search_id = current_search_id.load(std::memory_order_relaxed);
             }
-
-            // 2. Signal that this thread has finished its work
-            threads_running.fetch_sub(1, std::memory_order_release);
-            cv_done.notify_all();
         }
     }
 

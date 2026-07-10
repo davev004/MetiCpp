@@ -215,7 +215,7 @@ namespace Search {
             
             // Only the main thread (offset 0) should print UCI info to prevent terminal spam
             if (is_main_thread) {
-                std::cout << "info depth " << current_depth << " score cp " << best_score << " nodes " << nodes << "\n";
+                std::cout << "info depth " << current_depth << " score cp " << best_score << " nodes " << nodes << std::endl;
             }
         }
 

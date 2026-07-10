@@ -11,6 +11,7 @@
 #include "move_logic.hpp"
 #include "smp.hpp"
 #include "time.hpp"
+#include "logger.hpp"
 
 namespace UCI {
 
@@ -98,6 +99,20 @@ namespace UCI {
         std::string line, token;
 
         FEN::parse(board, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+
+        // Inside UCI::loop()
+        Logger::init("meticpp_uci.log"); // Initialise log
+
+        while (std::getline(std::cin, line)) {
+            if (line.empty()) continue;
+            
+            Logger::write("GUI -> ", line); // Log inbound commands
+
+            std::istringstream ss(line);
+            ss >> token;
+            // ... rest of the parsing ...
+        }
+
 
         // Turn off sync for maximum I/O performance
         std::ios_base::sync_with_stdio(false);
