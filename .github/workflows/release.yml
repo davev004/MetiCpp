@@ -46,7 +46,7 @@ jobs:
             g++ -std=c++17 -flto -static -static-libgcc -static-libstdc++ $FLAGS src/*.cpp -o $BIN_NAME
           else
             # Safe static linking for Linux C/C++ runtimes (avoids GLIBCXX errors)
-            g++ -std=c++17 -flto -static-libgcc -static-libstdc++ $FLAGS src/*.cpp -o $BIN_NAME
+            g++ -pthread -std=c++17 -flto -static-libgcc -static-libstdc++ $FLAGS src/*.cpp -o $BIN_NAME
           fi
 
       - name: Upload Binary to Job Artifacts
