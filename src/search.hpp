@@ -28,7 +28,7 @@ namespace Search {
         }
         return false;
     }
-    
+
     inline int quiescence(Board& board, int alpha, int beta, int ply, uint64_t& nodes) {
         Time::check(nodes);
         if (Time::time_up) return 0; // Abort instantly if time is up
@@ -39,7 +39,7 @@ namespace Search {
         // 1. Prevent infinite perpetual checks in Q-search
         if (board.state.halfMoveClock >= 100 || is_repetition(board)) return 0;
         // 2. Prevent array out-of-bounds / Stack Overflow
-        if (ply >= Meti::MAX_PLY - 1) return Eval::evaluate(board);
+        if (board.ply >= Meti::MAX_PLY - 1) return Eval::evaluate(board);
 
         // 1. Are we in check?
         Colour us = static_cast<Colour>(board.state.sideToMove);
@@ -118,7 +118,7 @@ namespace Search {
             return 0; 
         }
 
-        if (ply >= Meti::MAX_PLY - 1) return Eval::evaluate(board);
+        if (board.ply >= Meti::MAX_PLY - 1) return Eval::evaluate(board);
 
         // 1. Bound the search window to find the shortest mate
         int mate_value = MATE - ply;

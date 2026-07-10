@@ -2,7 +2,8 @@
 
 namespace Meti {
     // History & Search Limits
-    constexpr int MAX_PLY = 256;         // Guarantees zero heap allocation for history
+    constexpr int MAX_PLY = 2048;         // Guarantees zero heap allocation for history
+    constexpr int MAX_MOVES = 256;
     
     // Board Geometry (LERF Mapping)
     constexpr int NUM_SQUARES = 64;
