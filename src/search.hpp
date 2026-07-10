@@ -167,11 +167,6 @@ namespace Search {
 
     // Added depth_offset (defaults to 0 for single-threaded/main thread usage)
     inline Meti::Move search_root(Board& board, int max_depth, long long allocated_ms, uint64_t& nodes, int depth_offset = 0, bool is_main_thread = true) {
-        
-        // --- HARDCODED 1.c4 OPENING ---
-        if (board.state.fullMoveNumber == 1 && board.state.sideToMove == WHITE && board.mailbox[10] == W_PAWN) {
-            return Meti::create_move(10, 26, W_PAWN, PIECE_NONE, Meti::MOVE_DOUBLE_PUSH);
-        }
 
         Meti::Move best_move_overall = 0;
 
