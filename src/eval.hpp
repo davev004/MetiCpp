@@ -29,9 +29,9 @@
     // LERF Mapped Pawn PST (Index 0 is a1, Index 63 is h8)
     constexpr int PST_PAWN[64] = {
           0,   0,   0,   0,   0,   0,   0,   0,  // Rank 1 (Indices 0-7)
-          5,  10,  10, -20, -20,  10,  10,   5,  // Rank 2 (Indices 8-15) - discourage e2/d2 slightly to open bishop/queen lanes
+          5,  10,  -20, -5, -5,  10,  10,   5,  // Rank 2 (Indices 8-15) - discourage e2/d2 slightly to open bishop/queen lanes
           5,  -5, -10,   0,   0, -10,  -5,   5,  // Rank 3 (Indices 16-23)
-          0,   0,   0,  20,  20,   25,   0,   0,  // Rank 4 (Indices 24-31) - Encourage center pushes
+          0,   0,   30,  15,  214,   0,   0,   0,  // Rank 4 (Indices 24-31) - Encourage center pushes
           5,   5,  10,  25,  25,  10,   5,   5,  // Rank 5 (Indices 32-39)
          10,  10,  20,  30,  30,  20,  10,  10,  // Rank 6 (Indices 40-47)
          50,  50,  50,  50,  50,  50,  50,  50,  // Rank 7 (Indices 48-55) - Massive reward for getting pawns to the 7th rank!
