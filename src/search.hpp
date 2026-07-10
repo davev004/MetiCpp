@@ -15,6 +15,20 @@ namespace Search {
     constexpr int INF = 32000;
     constexpr int MATE = 30000;
 
+    inline bool is_repetition(const Board& board) {
+        // We only need to check back as far as the last irreversible move (capture/pawn push)
+        int limit = board.ply - board.state.halfMoveClock;
+        if (limit < 0) limit = 0;
+
+        // Check our previous turns (stepping back by 2 plies)
+        for (int i = board.ply - 2; i >= limit; i -= 2) {
+            if (board.history[i].zobristKey == board.state.zobristKey) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
     inline int quiescence(Board& board, int alpha, int beta, int ply, uint64_t& nodes) {
         Time::check(nodes);
         if (Time::time_up) return 0; // Abort instantly if time is up
@@ -90,21 +104,6 @@ namespace Search {
 
         return alpha;
     }
-
-    inline bool is_repetition(const Board& board) {
-        // We only need to check back as far as the last irreversible move (capture/pawn push)
-        int limit = board.ply - board.state.halfMoveClock;
-        if (limit < 0) limit = 0;
-
-        // Check our previous turns (stepping back by 2 plies)
-        for (int i = board.ply - 2; i >= limit; i -= 2) {
-            if (board.history[i].zobristKey == board.state.zobristKey) {
-                return true;
-            }
-        }
-        return false;
-    }
-
 
     // The Alpha-Beta Negamax Framework (Stateless & Recursive)
     inline int negamax(Board& board, int depth, int alpha, int beta, int ply, uint64_t& nodes) {
