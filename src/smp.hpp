@@ -56,6 +56,8 @@ namespace SMP {
                 // 2. Signal that this thread has finished its work safely
                 threads_running.fetch_sub(1, std::memory_order_release);
                 cv_done.notify_all();
+            } else {
+                local_search_id = current_search_id.load(std::memory_order_relaxed);
             }
         }
     }
