@@ -9,6 +9,22 @@ permissions:
   contents: write
 
 jobs:
+  verify:
+    name: Verify CMake tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=
+
+      - name: Build
+        run: cmake --build build-release --parallel 2
+
+      - name: Test
+        run: ctest --test-dir build-release --output-on-failure
+
   build:
     name: Build ${{ matrix.os }} - ${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
@@ -57,7 +73,7 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: build
+    needs: [build, verify]
     runs-on: ubuntu-latest
     steps:
       - name: Download all Compiled Binaries

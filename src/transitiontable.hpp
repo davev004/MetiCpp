@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <atomic>
 #include "types.hpp"
 #include "move.hpp"
 
@@ -12,11 +13,8 @@ namespace TT {
     };
 
     struct Entry {
-        uint64_t key;      // 8 bytes (Stores: Zobrist Key ^ Payload Signature)
-        Meti::Move move;   // 4 bytes
-        int16_t score;     // 2 bytes
-        uint8_t depth;     // 1 byte
-        Bound bound;       // 1 byte
+        std::atomic<uint64_t> key{0};
+        std::atomic<uint64_t> payload{0};
     };
 
     inline Entry* table = nullptr;
@@ -29,17 +27,22 @@ namespace TT {
     }
 
     // Mathematical Signature Generator
-    inline uint64_t make_signature(Meti::Move move, int16_t score, uint8_t depth, Bound bound) {
-        // Cast everything to uint64_t before shifting to prevent data loss
-        return static_cast<uint64_t>(move) ^
-               (static_cast<uint64_t>(static_cast<uint16_t>(score)) << 32) ^
-               (static_cast<uint64_t>(depth) << 48) ^
-               (static_cast<uint64_t>(bound) << 56);
+    inline uint64_t pack(Meti::Move move, int16_t score, uint8_t depth, Bound bound) {
+        return static_cast<uint64_t>(move) |
+               (static_cast<uint64_t>(static_cast<uint16_t>(score)) << 24) |
+               (static_cast<uint64_t>(depth) << 40) |
+               (static_cast<uint64_t>(bound) << 48);
     }
+
+    inline Meti::Move unpack_move(uint64_t payload) { return static_cast<Meti::Move>(payload & 0xFFFFFFULL); }
+    inline int16_t unpack_score(uint64_t payload) { return static_cast<int16_t>((payload >> 24) & 0xFFFFULL); }
+    inline uint8_t unpack_depth(uint64_t payload) { return static_cast<uint8_t>((payload >> 40) & 0xFFULL); }
+    inline Bound unpack_bound(uint64_t payload) { return static_cast<Bound>((payload >> 48) & 0xFFULL); }
 
     constexpr int MATE_BOUND = 29000; 
 
     inline void store(uint64_t key, int depth, int ply, int score, Meti::Move move, Bound bound) {
+        if (table == nullptr || num_entries == 0) return;
         Entry& tt_entry = table[key % num_entries];
 
         // Convert score to be independent of the current search depth
@@ -47,35 +50,37 @@ namespace TT {
         if (score > MATE_BOUND) stored_score += ply;
         else if (score < -MATE_BOUND) stored_score -= ply;
 
-        uint64_t signature = make_signature(move, stored_score, static_cast<uint8_t>(depth), bound);
-
-        tt_entry.move = move;
-        tt_entry.score = stored_score;
-        tt_entry.depth = static_cast<uint8_t>(depth);
-        tt_entry.bound = bound;
-        tt_entry.key = key ^ signature;
+        uint64_t payload = pack(move, stored_score, static_cast<uint8_t>(depth), bound);
+        tt_entry.payload.store(payload, std::memory_order_relaxed);
+        tt_entry.key.store(key ^ payload, std::memory_order_release);
     }
 
     inline bool probe(uint64_t key, int depth, int ply, int alpha, int beta, int& out_score, Meti::Move& out_move) {
-        volatile Entry temp = table[key % num_entries];
-        Entry tt_entry = *const_cast<Entry*>(&temp);
-        uint64_t signature = make_signature(tt_entry.move, tt_entry.score, tt_entry.depth, tt_entry.bound);
+        if (table == nullptr || num_entries == 0) return false;
+        Entry& tt_entry = table[key % num_entries];
+        uint64_t encoded_key = tt_entry.key.load(std::memory_order_acquire);
+        uint64_t payload = tt_entry.payload.load(std::memory_order_relaxed);
+        uint64_t confirmed_key = tt_entry.key.load(std::memory_order_acquire);
 
-        if ((tt_entry.key ^ signature) == key) {
-            out_move = tt_entry.move;
+        if (encoded_key == confirmed_key && (encoded_key ^ payload) == key) {
+            Meti::Move move = unpack_move(payload);
+            int16_t stored_score = unpack_score(payload);
+            uint8_t stored_depth = unpack_depth(payload);
+            Bound bound = unpack_bound(payload);
+            out_move = move;
 
-            bool is_mate_score = (tt_entry.score > MATE_BOUND || tt_entry.score < -MATE_BOUND);
+            bool is_mate_score = (stored_score > MATE_BOUND || stored_score < -MATE_BOUND);
 
-            if (tt_entry.depth >= depth || is_mate_score) {
-                int score = tt_entry.score;
+            if (stored_depth >= depth || is_mate_score) {
+                int score = stored_score;
 
                 // Re-adjust mate score relative to current ply
                 if (score > MATE_BOUND) score -= ply;
                 else if (score < -MATE_BOUND) score += ply;
 
-                if (tt_entry.bound == BOUND_EXACT) { out_score = score; return true; }
-                if (tt_entry.bound == BOUND_LOWER && score >= beta) { out_score = score; return true; }
-                if (tt_entry.bound == BOUND_UPPER && score <= alpha) { out_score = score; return true; }
+                if (bound == BOUND_EXACT) { out_score = score; return true; }
+                if (bound == BOUND_LOWER && score >= beta) { out_score = score; return true; }
+                if (bound == BOUND_UPPER && score <= alpha) { out_score = score; return true; }
             }
         }
         return false;

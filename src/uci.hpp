@@ -28,7 +28,9 @@ namespace UCI {
 
     // Helper to safely parse a string like "e2e4" or "e7e8q" into our 32-bit format
     inline Meti::Move parse_move(const Board& board, const std::string& move_str) {
-        if (move_str.length() < 4) return 0;
+        if (move_str.length() != 4 && move_str.length() != 5) return 0;
+        if (move_str[0] < 'a' || move_str[0] > 'h' || move_str[2] < 'a' || move_str[2] > 'h' ||
+            move_str[1] < '1' || move_str[1] > '8' || move_str[3] < '1' || move_str[3] > '8') return 0;
 
         int from_file = move_str[0] - 'a';
         int from_rank = move_str[1] - '1';
@@ -47,6 +49,7 @@ namespace UCI {
             else if (move_str[4] == 'r') prom = Meti::PROMOTION_ROOK;
             else if (move_str[4] == 'b') prom = Meti::PROMOTION_BISHOP;
             else if (move_str[4] == 'n') prom = Meti::PROMOTION_KNIGHT;
+            else return 0;
         }
 
         // Generate all moves and find the exact match to extract the flags
@@ -60,7 +63,10 @@ namespace UCI {
                 if (is_prom) {
                     if (Meti::get_prom(move) == prom) return move;
                 } else {
-                    return move;
+                    Piece moving = Meti::get_moving(move);
+                    bool promotion = (moving == W_PAWN || moving == B_PAWN) &&
+                        (Meti::get_to(move) < 8 || Meti::get_to(move) > 55);
+                    if (!promotion) return move;
                 }
             }
         }
@@ -71,6 +77,12 @@ namespace UCI {
     inline void async_search_worker(Board board, int max_depth, long long allocated_ms) {
         // Run the Iterative Deepening search!
         Meti::Move best_move = SMP::launch(board, max_depth, allocated_ms);
+
+        if (best_move == 0) {
+            std::cout << "bestmove 0000" << std::endl;
+            is_searching.store(false, std::memory_order_relaxed);
+            return;
+        }
         
         // Translate internal move back to UCI string protocol
         char from[3], to[3];
@@ -155,14 +167,17 @@ namespace UCI {
                         ss >> token;
                         fen += token + " ";
                     }
-                    FEN::parse(board, fen);
+                    if (!FEN::parse(board, fen)) continue;
                     ss >> token; // Consume "moves"
                 }
                 
                 while (ss >> token) {
                     Meti::Move parsed_move = parse_move(board, token);
                     if (parsed_move != 0) {
-                        make_move(board, parsed_move);
+                        if (is_castling_legal(board, parsed_move) && make_move(board, parsed_move)) {
+                            continue;
+                        }
+                        break;
                     }
                 }
             } 
@@ -204,6 +219,7 @@ namespace UCI {
                     ss >> token; // Consume "value"
                     int t;
                     if (ss >> t) {
+                        join_search();
                         SMP::set_threads(t); // Using the new dynamic thread spawner!
                     }
                 }
@@ -212,7 +228,8 @@ namespace UCI {
                     int megabytes;
                     if (ss >> megabytes) {
                         megabytes = std::max(1, std::min(megabytes, 16384));
-                        TT::allocate(megabytes);
+                        join_search();
+                        if (!is_searching.load(std::memory_order_relaxed)) TT::allocate(megabytes);
                     }
                 }
             }

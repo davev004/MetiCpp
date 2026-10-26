@@ -10,7 +10,7 @@
 #include "logger.hpp"
 
 namespace SMP {
-    constexpr int MAX_THREADS = 128;
+    constexpr int MAX_THREADS = 1;
     inline int active_threads = 1;
 
     // Thread pool state
@@ -30,7 +30,6 @@ namespace SMP {
     inline std::atomic<int> current_search_id{0}; 
 
     inline void worker_search(int thread_id) {
-        Logger::write("SMP", "Worker " + std::to_string(thread_id) + " started");
         int local_search_id = 0;
 
         while (engine_running.load(std::memory_order_relaxed)) {
@@ -54,10 +53,8 @@ namespace SMP {
                 uint64_t local_nodes = 0;
                 int depth_offset = thread_id % 3; 
                 Search::search_root(local_board, search_depth, search_time, local_nodes, depth_offset, false);
-                Logger::write("SMP", "Worker " + std::to_string(thread_id) + " finished search_root");
                 // 2. Signal that this thread has finished its work safely
                 threads_running.fetch_sub(1, std::memory_order_release);
-                Logger::write("SMP", "Worker " + std::to_string(thread_id) + " decremented counter");
                 cv_done.notify_all();
             } else {
                 local_search_id = current_search_id.load(std::memory_order_relaxed);
@@ -74,16 +71,8 @@ namespace SMP {
     }
 
     inline void set_threads(int count) {
-        if (count < 1) count = 1;
-        if (count > MAX_THREADS) count = MAX_THREADS;
-        
-        active_threads = count;
-
-        // Lazily spawn native background threads up to the requested count
-        while ((int)workers.size() < (active_threads - 1)) {
-            int new_thread_id = (int)workers.size() + 1;
-            workers.emplace_back(worker_search, new_thread_id);
-        }
+        (void)count;
+        active_threads = 1;
     }
 
     inline void stop_all() {
@@ -131,7 +120,6 @@ namespace SMP {
 
         // Time is up or depth reached; force workers to abort
         Time::time_up.store(true, std::memory_order_relaxed);
-        Logger::write("SMP", "Waiting for " + std::to_string(threads_running.load()) + " workers");
         // Sleep the main thread until all workers safely exit the search tree
         std::unique_lock<std::mutex> lock(smp_mutex);
         cv_done.wait(lock, [] { return threads_running.load(std::memory_order_acquire) == 0; });

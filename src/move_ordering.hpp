@@ -16,7 +16,7 @@ namespace MoveOrdering {
     };
 
     // Fast, stateless move scorer
-    inline int score_move(const Board& board, Meti::Move move, Meti::Move tt_move) {
+    inline int score_move(const Board&, Meti::Move move, Meti::Move tt_move) {
         if (move == tt_move) return 20000;
         int score = 0;
         Meti::MoveFlag flag = Meti::get_flag(move);

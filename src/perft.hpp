@@ -22,7 +22,7 @@ namespace Perft {
                 std::cout << "CRITICAL: Zero-move detected at node!" << std::endl;
                 continue; 
             }
-            make_move(board, list.moves[i]);
+            if (!is_castling_legal(board, list.moves[i]) || !make_move(board, list.moves[i])) continue;
 
             if (is_legal(board, list.moves[i])) {
                 nodes += run(board, depth - 1);
@@ -44,7 +44,7 @@ namespace Perft {
     for (int i = 0; i < list.count; ++i) {
         Meti::Move move = list.moves[i];
         uint64_t before_occ = board.occupancy[2];
-        make_move(board, move);
+        if (!is_castling_legal(board, move) || !make_move(board, move)) continue;
         if (before_occ == board.occupancy[2]) {
             std::cout << "CRITICAL: make_move did not update occupancy!" << std::endl;
         }

@@ -4,10 +4,35 @@
 #include "move.hpp"
 #include "threats.hpp"
 
-void make_move(Board& board, Meti::Move move);
+bool make_move(Board& board, Meti::Move move);
 void unmake_move(Board& board, Meti::Move move);
 
-inline bool is_legal(const Board& board, Meti::Move move) {
+inline bool is_castling_legal(const Board& board, Meti::Move move) {
+        if (Meti::get_flag(move) != Meti::MOVE_CASTLING) return true;
+
+        Colour us = static_cast<Colour>(board.state.sideToMove);
+        int from = Meti::get_from(move);
+        int to = Meti::get_to(move);
+        int transit = (from + to) / 2;
+        Piece king = (us == WHITE) ? W_KING : B_KING;
+        Piece rook = (us == WHITE) ? W_ROOK : B_ROOK;
+        int rook_from = (to > from) ? from + 3 : from - 4;
+        uint8_t right = 0;
+
+        if (us == WHITE) right = (to > from) ? Castling::WK : Castling::WQ;
+        else right = (to > from) ? Castling::BK : Castling::BQ;
+
+        if (board.mailbox[from] != king || board.mailbox[rook_from] != rook) return false;
+        if ((board.state.castlingRights & right) == 0) return false;
+
+        return (us == WHITE)
+                ? !Threats::is_square_attacked<BLACK>(board, from) &&
+                    !Threats::is_square_attacked<BLACK>(board, transit)
+                : !Threats::is_square_attacked<WHITE>(board, from) &&
+                    !Threats::is_square_attacked<WHITE>(board, transit);
+}
+
+inline bool is_legal(const Board& board, Meti::Move) {
     Colour us = static_cast<Colour>(board.state.sideToMove ^ 1);
     Colour opponent = static_cast<Colour>(board.state.sideToMove);
 
@@ -23,19 +48,6 @@ inline bool is_legal(const Board& board, Meti::Move move) {
                     Threats::is_square_attacked<BLACK>(board, king_sq);
 
     if (in_check) return false;
-
-    if (Meti::get_flag(move) == Meti::MOVE_CASTLING) {
-        int from = Meti::get_from(move);
-        int transit = (from + Meti::get_to(move)) / 2;
-
-        if (opponent == WHITE) {
-            if (Threats::is_square_attacked<WHITE>(board, from)) return false;
-            if (Threats::is_square_attacked<WHITE>(board, transit)) return false;
-        } else {
-            if (Threats::is_square_attacked<BLACK>(board, from)) return false;
-            if (Threats::is_square_attacked<BLACK>(board, transit)) return false;
-        }
-    }
 
     return true;
 }

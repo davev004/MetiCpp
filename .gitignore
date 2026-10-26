@@ -7,8 +7,10 @@ claude.md
 
 CMakeLists.txt
 Makefile
+rules.txt
 
 /build/
+/build-*/
 # Native binary
 *.exe
 *.pdb
