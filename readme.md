@@ -123,18 +123,21 @@ Set the transposition-table size in megabytes:
 setoption name Hash value 128
 ```
 
-The accepted hash range is 1 to 16384 MB. `Threads` uses persistent worker
-threads and parallel root splitting. Each worker has an independent board and
-history stack; workers share only the lock-free transposition table and the
-root work queue. Set it before `go`:
+The accepted hash range is 1 to 16384 MB. `Threads` controls a persistent pool
+of search workers and defaults to 1. Set it before `go`:
 
 ```text
 setoption name Threads value 4
 ```
 
-The engine supports 1 through 64 search threads. One thread retains the
-single-threaded search path; multiple threads search root moves concurrently
-and merge exact root results without locks in the recursive search.
+The engine supports 1 through 64 search threads. With one thread, the engine
+uses the regular single-threaded search path. With multiple threads, the main
+search thread takes the first move after move ordering and the worker pool
+searches the remaining root moves concurrently at each iterative-deepening
+depth. Parallelism is deliberately limited to the root, so every worker keeps
+an independent board and history stack while sharing the lock-free
+transposition table, deadline, and root work queue. Exact root results are
+merged atomically, and changing `Threads` stops and recreates the worker pool.
 
 ## Analysis Output
 
