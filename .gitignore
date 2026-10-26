@@ -5,7 +5,6 @@ claude.md
 /.claude/
 /testdata/
 
-CMakeLists.txt
 Makefile
 rules.txt
 
