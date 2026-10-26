@@ -2,6 +2,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <mutex>
@@ -115,10 +116,10 @@ namespace SMP {
         uint32_t observed_generation = 0;
         while (true) {
             std::unique_lock<std::mutex> lock(pool_mutex);
-            wake_workers.wait(lock, [&] {
-                return !pool_running.load(std::memory_order_acquire) ||
-                       work_generation.load(std::memory_order_acquire) != observed_generation;
-            });
+            while (pool_running.load(std::memory_order_acquire) &&
+                   work_generation.load(std::memory_order_acquire) == observed_generation) {
+                wake_workers.wait_for(lock, std::chrono::milliseconds(1));
+            }
 
             if (!pool_running.load(std::memory_order_acquire)) return;
             observed_generation = work_generation.load(std::memory_order_relaxed);
@@ -132,7 +133,10 @@ namespace SMP {
 
     inline void stop_workers() {
         if (worker_count == 0) return;
-        pool_running.store(false, std::memory_order_release);
+        {
+            std::lock_guard<std::mutex> lock(pool_mutex);
+            pool_running.store(false, std::memory_order_release);
+        }
         wake_workers.notify_all();
         for (int i = 0; i < worker_count; ++i) {
             if (workers[i].joinable()) workers[i].join();
@@ -192,15 +196,21 @@ namespace SMP {
 
     inline void dispatch_workers() {
         completed_workers.store(0, std::memory_order_relaxed);
-        work_generation.fetch_add(1, std::memory_order_release);
+        {
+            std::lock_guard<std::mutex> lock(pool_mutex);
+            work_generation.fetch_add(1, std::memory_order_release);
+        }
         wake_workers.notify_all();
     }
 
     inline void wait_for_workers() {
         std::unique_lock<std::mutex> lock(pool_mutex);
-        workers_done.wait(lock, [] {
+        workers_done.wait_for(lock, std::chrono::milliseconds(1), [] {
             return completed_workers.load(std::memory_order_acquire) == worker_count;
         });
+        while (completed_workers.load(std::memory_order_acquire) != worker_count) {
+            workers_done.wait_for(lock, std::chrono::milliseconds(1));
+        }
     }
 
     inline Meti::Move search_parallel(Board& board, int max_depth) {
