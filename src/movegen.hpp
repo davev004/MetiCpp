@@ -60,7 +60,13 @@ namespace MoveGen {
         if (board.state.enPassantSquare != Meti::SQ_NONE) {
             int ep_square = board.state.enPassantSquare;
             uint64_t ep_mask = 1ULL << ep_square;
+            int capture_square = ep_square ^ 8;
+            Piece captured_pawn = (Us == WHITE) ? B_PAWN : W_PAWN;
 
+            if (board.mailbox[capture_square] == captured_pawn &&
+                board.mailbox[ep_square] == PIECE_NONE &&
+                ((Us == WHITE && (ep_square >> 3) == 5) ||
+                 (Us == BLACK && (ep_square >> 3) == 2))) {
             if constexpr (Us == WHITE) {
                 uint64_t ep_sources = 0;
                 if ((ep_mask & ~FILE_H) != 0) ep_sources |= (ep_mask >> 7) & pawns;
@@ -80,6 +86,7 @@ namespace MoveGen {
                     int from_square = Bitboard::pop_lsb(ep_sources);
                     add_pawn_move(from_square, ep_square, PIECE_NONE, Meti::MOVE_CAPTURE);
                 }
+            }
             }
         }
 
@@ -176,14 +183,14 @@ namespace MoveGen {
             // Castling Moves
             // (Note: Threat checks are deferred to is_legal during Perft/Search)
             if constexpr (Us == WHITE) {
-                if (can_castle(Castling::WK, 0x60ULL)) 
+                if (board.mailbox[4] == W_KING && board.mailbox[7] == W_ROOK && can_castle(Castling::WK, 0x60ULL))
                     list.add(Meti::create_move(4, 6, OurKing, PIECE_NONE, Meti::MOVE_CASTLING));
-                if (can_castle(Castling::WQ, 0x0EULL))  
+                if (board.mailbox[4] == W_KING && board.mailbox[0] == W_ROOK && can_castle(Castling::WQ, 0x0EULL))
                     list.add(Meti::create_move(4, 2, OurKing, PIECE_NONE, Meti::MOVE_CASTLING));
             } else {
-                if (can_castle(Castling::BK, 0x6000000000000000ULL)) 
+                if (board.mailbox[60] == B_KING && board.mailbox[63] == B_ROOK && can_castle(Castling::BK, 0x6000000000000000ULL))
                     list.add(Meti::create_move(60, 62, OurKing, PIECE_NONE, Meti::MOVE_CASTLING));
-                if (can_castle(Castling::BQ, 0x0E00000000000000ULL)) 
+                if (board.mailbox[60] == B_KING && board.mailbox[56] == B_ROOK && can_castle(Castling::BQ, 0x0E00000000000000ULL))
                     list.add(Meti::create_move(60, 58, OurKing, PIECE_NONE, Meti::MOVE_CASTLING));
             }
         }
@@ -253,13 +260,6 @@ namespace MoveGen {
 
     // The runtime router: This is the only if/else branch the CPU has to evaluate.
     inline void generate(const Board& board, Meti::MoveList& list) {
-        // 1. Manually resolve the pawn enum for the debug print
-        Piece our_pawn = (board.state.sideToMove == WHITE) ? W_PAWN : B_PAWN;
-        
-        //std::cout << "DEBUG: Generating moves for side " << board.state.sideToMove 
-        //          << " with " << board.bitboards[our_pawn] << " pawns." << std::endl;
-
-        // 2. Dispatch to the template function using the runtime state
         if (board.state.sideToMove == WHITE) {
             generate_pseudo_legal_moves<WHITE>(board, list);
         } else {

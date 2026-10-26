@@ -5,7 +5,9 @@
 #include "constants.hpp"
 #include <iostream>
 
-void make_move(Board& board, Meti::Move move) {
+bool make_move(Board& board, Meti::Move move) {
+    if (board.ply >= Meti::MAX_PLY) return false;
+
     int from = Meti::get_from(move);
     int to = Meti::get_to(move);
     int flag = Meti::get_flag(move);
@@ -126,21 +128,13 @@ if (captured != PIECE_NONE) {
         board.state.zobristKey ^= Zobrist::enPassantKeys[board.state.enPassantSquare % 8];
     }
 
-    for (int sq = 0; sq < 64; sq++) {
-    Piece p = board.mailbox[sq];
-
-    if (p != PIECE_NONE && (board.bitboards[p] & (1ULL << sq)) == 0) {
-        std::cout << "MAILBOX/BITBOARD DESYNC at square "
-                  << sq << " piece " << static_cast<int>(p) << "\n";
-        return;
-    }
-}
-    
     board.state.sideToMove ^= 1;
-
+    return true;
 }
 
 void unmake_move(Board& board, Meti::Move move) {
+    if (board.ply <= 0) return;
+
     int from = Meti::get_from(move);
     int to = Meti::get_to(move);
     int flag = Meti::get_flag(move);

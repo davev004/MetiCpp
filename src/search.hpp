@@ -15,6 +15,11 @@ namespace Search {
     constexpr int INF = 32000;
     constexpr int MATE = 30000;
 
+    struct Result {
+        int score;
+        bool aborted;
+    };
+
     inline bool is_repetition(const Board& board) {
         // We only need to check back as far as the last irreversible move (capture/pawn push)
         int limit = board.ply - board.state.halfMoveClock;
@@ -29,17 +34,17 @@ namespace Search {
         return false;
     }
 
-    inline int quiescence(Board& board, int alpha, int beta, int ply, uint64_t& nodes) {
+    inline Result quiescence(Board& board, int alpha, int beta, int ply, uint64_t& nodes) {
         Time::check(nodes);
-        if (Time::time_up) return 0; // Abort instantly if time is up
+        if (Time::time_up) return {0, true};
     
         nodes++;
 
         // --- THE CIRCUIT BREAKERS ---
         // 1. Prevent infinite perpetual checks in Q-search
-        if (board.state.halfMoveClock >= 100 || is_repetition(board)) return 0;
+        if (board.state.halfMoveClock >= 100 || is_repetition(board)) return {0, false};
         // 2. Prevent array out-of-bounds / Stack Overflow
-        if (board.ply >= Meti::MAX_PLY - 1) return Eval::evaluate(board);
+        if (board.ply >= Meti::MAX_PLY - 1) return {Eval::evaluate(board), false};
 
         // 1. Are we in check?
         Colour us = static_cast<Colour>(board.state.sideToMove);
@@ -58,7 +63,7 @@ namespace Search {
         // 2. The "Stand Pat" Score (ONLY if we are not in check)
         if (!in_check) {
             int stand_pat = Eval::evaluate(board);
-            if (stand_pat >= beta) return beta;
+            if (stand_pat >= beta) return {beta, false};
             if (alpha < stand_pat) alpha = stand_pat;
         }
 
@@ -83,48 +88,50 @@ namespace Search {
                 break; 
             }
 
-            make_move(board, move);
+            if (!is_castling_legal(board, move) || !make_move(board, move)) continue;
             if (!is_legal(board, move)) {
                 unmake_move(board, move);
                 continue;
             }
             legal_moves++;
 
-            int score = -quiescence(board, -beta, -alpha, ply + 1, nodes);
+            Result child = quiescence(board, -beta, -alpha, ply + 1, nodes);
             unmake_move(board, move);
+            if (child.aborted) return {0, true};
+            int score = -child.score;
 
-            if (score >= beta) return beta;
+            if (score >= beta) return {beta, false};
             if (score > alpha) alpha = score;
         }
 
         // 4. Checkmate detection in Q-Search
         if (in_check && legal_moves == 0) {
-            return -MATE;
+            return {-MATE, false};
         }
 
-        return alpha;
+        return {alpha, false};
     }
 
     // The Alpha-Beta Negamax Framework (Stateless & Recursive)
-    inline int negamax(Board& board, int depth, int alpha, int beta, int ply, uint64_t& nodes) {
+    inline Result negamax(Board& board, int depth, int alpha, int beta, int ply, uint64_t& nodes) {
         Time::check(nodes);
-        if (Time::time_up) return 0;
+        if (Time::time_up) return {0, true};
         
         nodes++;
         
         // --- 1. DRAW DETECTION (Repetition & 50-Move Rule) ---
         // If we are caught in a loop or hit 50 moves, score it as a 0 (Draw)
         if (board.state.halfMoveClock >= 100 || is_repetition(board)) {
-            return 0; 
+            return {0, false};
         }
 
-        if (board.ply >= Meti::MAX_PLY - 1) return Eval::evaluate(board);
+        if (board.ply >= Meti::MAX_PLY - 1) return {Eval::evaluate(board), false};
 
         // 1. Bound the search window to find the shortest mate
         int mate_value = MATE - ply;
         if (alpha < -mate_value) alpha = -mate_value;
         if (beta > mate_value - 1) beta = mate_value - 1;
-        if (alpha >= beta) return alpha;
+        if (alpha >= beta) return {alpha, false};
 
         if (depth == 0) return quiescence(board, alpha, beta, ply, nodes);
 
@@ -135,7 +142,7 @@ namespace Search {
         Meti::Move tt_move = 0;
         
         if (TT::probe(board.state.zobristKey, depth, ply, alpha, beta, tt_score, tt_move)) {
-            return tt_score; // Hard cutoff confirmed safe by XOR
+            return {tt_score, false};
         }
 
         Meti::MoveList list;
@@ -149,15 +156,17 @@ namespace Search {
         for (int i = 0; i < list.count; ++i) {
             Meti::Move move = list.moves[i];
             
-            make_move(board, move);
+            if (!is_castling_legal(board, move) || !make_move(board, move)) continue;
             if (!is_legal(board, move)) {
                 unmake_move(board, move);
                 continue;
             }
             legal_moves++;
 
-            int score = -negamax(board, depth - 1, -beta, -alpha, ply + 1, nodes);
+            Result child = negamax(board, depth - 1, -beta, -alpha, ply + 1, nodes);
             unmake_move(board, move);
+            if (child.aborted) return {0, true};
+            int score = -child.score;
 
             if (score > best_score) {
                 best_score = score;
@@ -174,15 +183,15 @@ namespace Search {
             Piece our_king = (board.state.sideToMove == WHITE) ? W_KING : B_KING;
             uint64_t king_bb = board.bitboards[our_king];
             
-            if (king_bb == 0) return 0;
+            if (king_bb == 0) return {0, false};
             int king_sq = __builtin_ctzll(king_bb);
 
             bool in_check = (opponent == WHITE) ? 
                             Threats::is_square_attacked<WHITE>(board, king_sq) : 
                             Threats::is_square_attacked<BLACK>(board, king_sq);
 
-            if (in_check) return -MATE + ply; 
-            else return 0; 
+            if (in_check) return {-MATE + ply, false};
+            else return {0, false};
         }
 
         // --- 3. STORE IN TT ---
@@ -197,11 +206,12 @@ namespace Search {
         
         TT::store(board.state.zobristKey, depth, ply, best_score, best_move, bound);
 
-        return best_score;
+        return {best_score, false};
     }
 
     // Added depth_offset (defaults to 0 for single-threaded/main thread usage)
     inline Meti::Move search_root(Board& board, int max_depth, long long allocated_ms, uint64_t& nodes, int depth_offset = 0, bool is_main_thread = true) {
+        (void)allocated_ms;
         Meti::Move best_move_overall = 0;
 
         for (int current_depth = 1 + depth_offset; current_depth <= max_depth; current_depth++) {
@@ -218,14 +228,15 @@ namespace Search {
 
             for (int i = 0; i < list.count; i++) {
                 Meti::Move move = list.moves[i];
-                make_move(board, move);
+                if (!is_castling_legal(board, move) || !make_move(board, move)) continue;
                 if (!is_legal(board, move)) { unmake_move(board, move); continue; }
 
                 // Pass dynamic -beta and -alpha, NOT -INF and INF
-                int score = -negamax(board, current_depth - 1, -beta, -alpha, 1, nodes);
+                Result child = negamax(board, current_depth - 1, -beta, -alpha, 1, nodes);
                 unmake_move(board, move);
 
-                if (Time::time_up) break;
+                if (child.aborted || Time::time_up) break;
+                int score = -child.score;
 
                 if (score > best_score) {
                     best_score = score;

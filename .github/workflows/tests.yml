@@ -1,0 +1,29 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+      - audit
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build-ci -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=
+
+      - name: Build
+        run: cmake --build build-ci --parallel 2
+
+      - name: Test
+        run: ctest --test-dir build-ci --output-on-failure
