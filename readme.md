@@ -163,4 +163,5 @@ bestmove 0000
 
 ## Release
 
-The current principal-variation release is `v2.1.6`.
+The current release is `v3.0.0`, including parallel root search with persistent
+worker threads.
