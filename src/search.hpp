@@ -20,6 +20,46 @@ namespace Search {
         bool aborted;
     };
 
+    struct PVLine {
+        Meti::Move moves[Meti::MAX_PLY];
+        int length = 0;
+    };
+
+    inline void print_move(Meti::Move move) {
+        char from[3];
+        char to[3];
+        Meti::square_to_coord(Meti::get_from(move), from);
+        Meti::square_to_coord(Meti::get_to(move), to);
+        std::cout << from << to;
+
+        Piece moving = Meti::get_moving(move);
+        int destination = Meti::get_to(move);
+        if ((moving == W_PAWN || moving == B_PAWN) && (destination < 8 || destination > 55)) {
+            constexpr char promotion_chars[4] = {'n', 'b', 'r', 'q'};
+            std::cout << promotion_chars[Meti::get_prom(move)];
+        }
+    }
+
+    inline void extract_pv(const Board& root, Meti::Move first_move, int max_length, PVLine& pv) {
+        Board board = root;
+        pv.length = 0;
+        Meti::Move move = first_move;
+
+        while (move != 0 && pv.length < max_length && pv.length < Meti::MAX_PLY) {
+            if (!is_castling_legal(board, move) || !make_move(board, move)) break;
+            if (!is_legal(board, move)) {
+                unmake_move(board, move);
+                break;
+            }
+            pv.moves[pv.length++] = move;
+            if (!TT::peek_move(board.state.zobristKey, move)) break;
+        }
+
+        while (board.ply > 0) {
+            unmake_move(board, pv.moves[board.ply - 1]);
+        }
+    }
+
     inline bool is_repetition(const Board& board) {
         // We only need to check back as far as the last irreversible move (capture/pawn push)
         int limit = board.ply - board.state.halfMoveClock;
@@ -249,7 +289,17 @@ namespace Search {
             best_move_overall = best_move_this_depth;
             
             if (is_main_thread) {
-                std::cout << "info depth " << current_depth << " score cp " << best_score << " nodes " << nodes << std::endl;
+                PVLine pv;
+                extract_pv(board, best_move_overall, current_depth, pv);
+                std::cout << "info depth " << current_depth << " score cp " << best_score << " nodes " << nodes;
+                if (pv.length > 0) {
+                    std::cout << " pv";
+                    for (int pv_index = 0; pv_index < pv.length; ++pv_index) {
+                        std::cout << ' ';
+                        print_move(pv.moves[pv_index]);
+                    }
+                }
+                std::cout << std::endl;
             }
         }
         return best_move_overall;

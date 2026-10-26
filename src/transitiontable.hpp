@@ -85,4 +85,15 @@ namespace TT {
         }
         return false;
     }
+
+    inline bool peek_move(uint64_t key, Meti::Move& out_move) {
+        if (table == nullptr || num_entries == 0) return false;
+        Entry& tt_entry = table[key % num_entries];
+        uint64_t encoded_key = tt_entry.key.load(std::memory_order_acquire);
+        uint64_t payload = tt_entry.payload.load(std::memory_order_relaxed);
+        uint64_t confirmed_key = tt_entry.key.load(std::memory_order_acquire);
+        if (encoded_key != confirmed_key || (encoded_key ^ payload) != key) return false;
+        out_move = unpack_move(payload);
+        return out_move != 0;
+    }
 }
