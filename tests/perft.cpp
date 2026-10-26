@@ -88,6 +88,21 @@ namespace {
         require(UCI::parse_move(board, "e7e9") == 0, "uci invalid coordinate rejected");
         require(UCI::parse_move(board, "e7e8") == 0, "uci missing promotion rejected");
     }
+
+    void test_parallel_search_preserves_root() {
+        Board board;
+        require(FEN::parse(board, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"),
+                "parallel search fen");
+        Board before = board;
+
+        SMP::init();
+        SMP::set_threads(2);
+        Meti::Move best_move = SMP::launch(board, 3, 10000);
+        SMP::stop_all();
+
+        require(best_move != 0, "parallel search returns a move");
+        assert_same_position(board, before);
+    }
 }
 
 int main() {
@@ -95,6 +110,7 @@ int main() {
     test_position("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 20, 400, 8902);
     test_special_moves();
     test_uci_move_validation();
+    test_parallel_search_preserves_root();
 
     Board board;
     require(!FEN::parse(board, "8/8/8/8/8/8/8/8 w - - 0 1"), "missing kings");

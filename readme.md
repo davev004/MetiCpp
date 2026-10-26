@@ -123,9 +123,18 @@ Set the transposition-table size in megabytes:
 setoption name Hash value 128
 ```
 
-The accepted hash range is 1 to 16384 MB. The `Threads` option is exposed for
-UCI compatibility, but the current release intentionally runs with one active
-search thread until parallel result aggregation is implemented.
+The accepted hash range is 1 to 16384 MB. `Threads` uses persistent worker
+threads and parallel root splitting. Each worker has an independent board and
+history stack; workers share only the lock-free transposition table and the
+root work queue. Set it before `go`:
+
+```text
+setoption name Threads value 4
+```
+
+The engine supports 1 through 64 search threads. One thread retains the
+single-threaded search path; multiple threads search root moves concurrently
+and merge exact root results without locks in the recursive search.
 
 ## Analysis Output
 
