@@ -15,14 +15,18 @@ namespace Search {
     constexpr int INF = 32000;
     constexpr int MATE = 30000;
 
-    struct Result {
-        int score;
-        bool aborted;
-    };
-
     struct PVLine {
         Meti::Move moves[Meti::MAX_PLY];
         int length = 0;
+    };
+
+    struct Result {
+        int score;
+        bool aborted;
+        PVLine pv;
+
+        Result(int score, bool aborted) : score(score), aborted(aborted) {}
+        Result(int score, bool aborted, const PVLine& pv) : score(score), aborted(aborted), pv(pv) {}
     };
 
     inline void print_move(Meti::Move move) {
@@ -176,12 +180,13 @@ namespace Search {
         if (depth == 0) return quiescence(board, alpha, beta, ply, nodes);
 
         int alpha_orig = alpha; // Keep original alpha to determine TT bound later
+        bool pv_node = beta - alpha > 1;
 
        // --- 1. PROBE THE TT ---
         int tt_score;
         Meti::Move tt_move = 0;
         
-        if (TT::probe(board.state.zobristKey, depth, ply, alpha, beta, tt_score, tt_move)) {
+        if (!pv_node && TT::probe(board.state.zobristKey, depth, ply, alpha, beta, tt_score, tt_move)) {
             return {tt_score, false};
         }
 
@@ -192,6 +197,7 @@ namespace Search {
         int legal_moves = 0;
         int best_score = -INF;
         Meti::Move best_move = 0; // Track the best move for this node
+        PVLine best_pv;
 
         for (int i = 0; i < list.count; ++i) {
             Meti::Move move = list.moves[i];
@@ -211,6 +217,14 @@ namespace Search {
             if (score > best_score) {
                 best_score = score;
                 best_move = move; // Record the move that caused the score increase
+                best_pv.length = 1;
+                best_pv.moves[0] = move;
+                for (int child_index = 0;
+                     child_index < child.pv.length && child_index + 1 < Meti::MAX_PLY;
+                     ++child_index) {
+                    best_pv.moves[child_index + 1] = child.pv.moves[child_index];
+                    ++best_pv.length;
+                }
             }
             
             if (best_score > alpha) alpha = best_score;
@@ -246,7 +260,7 @@ namespace Search {
         
         TT::store(board.state.zobristKey, depth, ply, best_score, best_move, bound);
 
-        return {best_score, false};
+        return {best_score, false, best_pv};
     }
 
     // Added depth_offset (defaults to 0 for single-threaded/main thread usage)
@@ -265,6 +279,7 @@ namespace Search {
             int beta = INF;
             int best_score = -INF;
             Meti::Move best_move_this_depth = 0;
+            PVLine best_pv_this_depth;
 
             for (int i = 0; i < list.count; i++) {
                 Meti::Move move = list.moves[i];
@@ -281,6 +296,14 @@ namespace Search {
                 if (score > best_score) {
                     best_score = score;
                     best_move_this_depth = move;
+                    best_pv_this_depth.length = 1;
+                    best_pv_this_depth.moves[0] = move;
+                    for (int child_index = 0;
+                         child_index < child.pv.length && child_index + 1 < Meti::MAX_PLY;
+                         ++child_index) {
+                        best_pv_this_depth.moves[child_index + 1] = child.pv.moves[child_index];
+                        ++best_pv_this_depth.length;
+                    }
                 }
                 if (best_score > alpha) alpha = best_score; // Shrink the root window!
             }
@@ -289,14 +312,12 @@ namespace Search {
             best_move_overall = best_move_this_depth;
             
             if (is_main_thread) {
-                PVLine pv;
-                extract_pv(board, best_move_overall, current_depth, pv);
                 std::cout << "info depth " << current_depth << " score cp " << best_score << " nodes " << nodes;
-                if (pv.length > 0) {
+                if (best_pv_this_depth.length > 0) {
                     std::cout << " pv";
-                    for (int pv_index = 0; pv_index < pv.length; ++pv_index) {
+                    for (int pv_index = 0; pv_index < best_pv_this_depth.length; ++pv_index) {
                         std::cout << ' ';
-                        print_move(pv.moves[pv_index]);
+                        print_move(best_pv_this_depth.moves[pv_index]);
                     }
                 }
                 std::cout << std::endl;

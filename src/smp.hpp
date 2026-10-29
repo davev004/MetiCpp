@@ -258,7 +258,23 @@ namespace SMP {
             total_nodes += root_work.nodes.load(std::memory_order_relaxed);
 
             Search::PVLine pv;
-            Search::extract_pv(board, best_move, depth, pv);
+            pv.moves[0] = best_move;
+            pv.length = 1;
+            Board pv_board = board;
+            uint64_t pv_nodes = 0;
+            if (is_castling_legal(pv_board, best_move) && make_move(pv_board, best_move) &&
+                is_legal(pv_board, best_move)) {
+                Search::Result pv_result = Search::negamax(pv_board, depth - 1,
+                                                            -Search::INF, Search::INF,
+                                                            1, pv_nodes);
+                for (int child_index = 0;
+                     child_index < pv_result.pv.length && child_index + 1 < Meti::MAX_PLY;
+                     ++child_index) {
+                    pv.moves[child_index + 1] = pv_result.pv.moves[child_index];
+                    ++pv.length;
+                }
+            }
+            total_nodes += pv_nodes;
             std::cout << "info depth " << depth << " score cp " << result_score(result)
                       << " nodes " << total_nodes;
             if (pv.length > 0) {
