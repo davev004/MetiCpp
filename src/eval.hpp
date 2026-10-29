@@ -2,8 +2,6 @@
 #include "board.hpp"
 #include "types.hpp"
 
-
-
     namespace Eval {
 
     // Piece values (Centipawns)
@@ -40,7 +38,7 @@
     
     constexpr int PST_BISHOP[64] = {
         -20, -10, -10, -10, -10, -10, -10, -20,
-        -10,   0,   0,   0,   0,   0,   0, -10,
+        -10,   10,   0,   0,   0,   0,   10, -10,
         -10,   0,   5,  10,  10,   5,   0, -10,
         -10,   5,   5,  10,  10,   5,   5, -10,
         -10,   0,  10,  10,  10,  10,   0, -10,
@@ -73,7 +71,7 @@
 
     // LERF Mapped King PST (Index 0 is a1, Index 63 is h8)
     constexpr int PST_KING[64] = {
-         20,  30,  10,   0,   0,  10,  30,  20,  // Rank 1 (Indices 0-7)   - Safe on g1/c1, okay on h1/a1
+         10,  20,  35,   0,   0,  10,  35,  20,  // Rank 1 (Indices 0-7)   - Safe on g1/c1, okay on h1/a1
          20,  20,   0,   0,   0,   0,  20,  20,  // Rank 2 (Indices 8-15)  - Walking up is dangerous
         -10, -20, -20, -20, -20, -20, -20, -10,  // Rank 3 (Indices 16-23)
         -20, -30, -30, -40, -40, -30, -30, -20,  // Rank 4 (Indices 24-31) - Absolute death zone
