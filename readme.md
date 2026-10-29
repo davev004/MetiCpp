@@ -9,7 +9,49 @@ principal-variation output for analysis tools such as En Croissant.
 Requirements:
 
 - CMake 3.20 or newer
-- A C++20 compiler
+- A C++20 compiler with GCC/Clang-compatible built-ins
+
+### Linux
+
+Install CMake, GCC, and the pthread development libraries using your
+distribution's package manager. The default build matches the verification
+job in GitHub Actions:
+
+```sh
+cmake -S . -B build-ci -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=
+cmake --build build-ci --parallel 2
+ctest --test-dir build-ci --output-on-failure
+```
+
+### Windows 11
+
+The GitHub release pipeline uses MinGW-w64 GCC, not MSVC. Install the
+prerequisites from an elevated PowerShell prompt:
+
+```powershell
+winget install --id Kitware.CMake --exact
+winget install --id MSYS2.MSYS2 --exact
+```
+
+Open the **MSYS2 UCRT64** terminal and install the GCC toolchain and CMake:
+
+```sh
+pacman -Syu
+pacman -S --needed mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake
+```
+
+From that terminal, change to the repository directory and use the Windows
+preset. The same generator is available from PowerShell when `g++` and
+`mingw32-make` are on `PATH`:
+
+```powershell
+cmake --preset windows-release
+cmake --build --preset windows-release
+ctest --preset windows-release
+```
+
+Do not mix a build directory between MSYS2 and PowerShell generators; remove
+the directory or choose a new one when changing generators.
 
 Using Make:
 
@@ -31,7 +73,19 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMETI_NATIVE=ON
 cmake --build build --parallel
 ```
 
-The engine binary is `build/meticpp`.
+The release matrix uses the same architecture names on either platform:
+
+```sh
+cmake -S . -B build-avx2 -DCMAKE_BUILD_TYPE=Release -DMETI_ARCH=avx2 -DMETI_STATIC=ON
+cmake --build build-avx2 --parallel 2
+```
+
+Use `METI_ARCH=popcnt`, `avx2`, or `avx512` to match the corresponding GitHub
+release artifact. `METI_STATIC=ON` bundles the GCC runtime on Windows and uses
+the safe static GCC/standard-library flags on Linux.
+
+The engine binary is `build/meticpp` on Linux and `build/meticpp.exe` on
+Windows.
 
 ## Tests
 

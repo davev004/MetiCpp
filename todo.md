@@ -1,6 +1,6 @@
 ## TODO:
 ### Bugs:
-- fix PV bug at depth 9 and 10 where PV stops being printed (TT issue?) 
+- Fix PV bug at depth 9 and 10 where PV stops being printed (TT issue?) 
 
 - Evaluate effectiveness of encouraging castling
 
@@ -10,8 +10,11 @@
 
 - Teach engine about king safety
 
-- Encourage opposite side castling to opponent
+- Encourage opposite side castling to opponent (under a "personality" UCI flag?)
 
 - Magic bitboards
 
 - UCI move overhead
+
+- Evolutionary algorithm to find optimal PST values
+
