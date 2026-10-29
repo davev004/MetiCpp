@@ -6,9 +6,9 @@
 
 ### Features:
 
-- Introduce UCI flag for opening variation - and have it randomly pick a first move (as white) from a list of valid opening moves and send that regardless of eval.
+- Introduce UCI flag for opening variation - and have it randomly pick a first move (as white) from a list of valid opening moves and send that regardless of eval. [done]
 
-- UCI move overhead
+- UCI move overhead [done]
 
 - Teach engine about king safety
 

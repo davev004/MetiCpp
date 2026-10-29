@@ -160,7 +160,8 @@ go wtime 300000 btime 300000 winc 2000 binc 2000
 ```
 
 The engine allocates approximately one twentieth of the remaining clock plus
-half the increment.
+half the increment, then subtracts the configured move overhead. The default
+move overhead is 100 milliseconds.
 
 ### Stop and quit
 
@@ -192,6 +193,41 @@ depth. Parallelism is deliberately limited to the root, so every worker keeps
 an independent board and history stack while sharing the lock-free
 transposition table, deadline, and root work queue. Exact root results are
 merged atomically, and changing `Threads` stops and recreates the worker pool.
+
+The engine advertises these additional UCI options:
+
+```text
+option name Move Overhead type spin default 100 min 0 max 5000
+option name Opening Variation type check default false
+```
+
+Set `Move Overhead` to the amount of time, in milliseconds, that should be
+reserved for GUI and network communication around each move. This is useful
+for online play, including Lichess, where spending the entire allocated clock
+budget can cause a flag despite the engine finishing its search in time:
+
+```text
+setoption name Move Overhead value 150
+```
+
+`Opening Variation` is disabled by default. When enabled, it affects only the
+initial white move from the starting position. For estimated time controls at
+or faster than 5+3, the engine chooses a random legal white move. For slower
+time controls, it chooses randomly from this limited set:
+
+```text
+e2e4 d2d4 c2c4 g1f3 b2b4
+```
+
+The option does not affect positions reached after moves have already been
+played, black's move, or searches where no white clock is supplied. When it is
+disabled, normal search selects the move the engine evaluates as best:
+
+```text
+setoption name Opening Variation value true
+position startpos
+go wtime 300000 btime 300000 winc 3000 binc 3000
+```
 
 ## Analysis Output
 

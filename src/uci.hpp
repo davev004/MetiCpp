@@ -4,6 +4,8 @@
 #include <sstream>
 #include <thread>
 #include <atomic>
+#include <random>
+#include <vector>
 #include "board.hpp"
 #include "fen.hpp"
 #include "search.hpp"
@@ -18,6 +20,61 @@ namespace UCI {
     // Thread management state
     inline std::thread search_thread;
     inline std::atomic<bool> is_searching{false};
+    inline int move_overhead_ms = 100;
+    inline bool opening_variation = false;
+
+    inline std::string move_to_uci(Meti::Move move) {
+        char from[3], to[3];
+        Meti::square_to_coord(Meti::get_from(move), from);
+        Meti::square_to_coord(Meti::get_to(move), to);
+
+        std::string result = std::string(from) + to;
+        Piece moving = Meti::get_moving(move);
+        if ((moving == W_PAWN || moving == B_PAWN) &&
+            ((1ULL << Meti::get_to(move)) & 0xFF000000000000FFULL)) {
+            Meti::PromotionPiece promotion = Meti::get_prom(move);
+            if (promotion == Meti::PROMOTION_QUEEN) result += 'q';
+            else if (promotion == Meti::PROMOTION_ROOK) result += 'r';
+            else if (promotion == Meti::PROMOTION_BISHOP) result += 'b';
+            else result += 'n';
+        }
+        return result;
+    }
+
+    inline Meti::Move choose_opening_move(const Board& board, long long wtime, long long winc) {
+        if (!opening_variation || board.ply != 0 || board.state.sideToMove != WHITE ||
+            wtime <= 0) return 0;
+
+        Meti::MoveList legal_moves;
+        MoveGen::generate(board, legal_moves);
+        std::vector<Meti::Move> candidates;
+        bool fast_time_control = wtime + (40 * winc) <= 8 * 60 * 1000;
+        const char* limited_moves[] = {"e2e4", "d2d4", "c2c4", "g1f3", "b2b4"};
+
+        for (int i = 0; i < legal_moves.count; ++i) {
+            Meti::Move move = legal_moves.moves[i];
+            Board checked_board = board;
+            if (!is_castling_legal(checked_board, move) || !make_move(checked_board, move)) continue;
+            if (!is_legal(checked_board, move)) continue;
+
+            if (fast_time_control) {
+                candidates.push_back(move);
+            } else {
+                std::string move_string = move_to_uci(move);
+                for (const char* limited_move : limited_moves) {
+                    if (move_string == limited_move) {
+                        candidates.push_back(move);
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (candidates.empty()) return 0;
+        static thread_local std::mt19937 generator(std::random_device{}());
+        std::uniform_int_distribution<size_t> distribution(0, candidates.size() - 1);
+        return candidates[distribution(generator)];
+    }
 
     inline void join_search() {
         if (search_thread.joinable()) {
@@ -84,24 +141,8 @@ namespace UCI {
             return;
         }
         
-        // Translate internal move back to UCI string protocol
-        char from[3], to[3];
-        Meti::square_to_coord(Meti::get_from(best_move), from);
-        Meti::square_to_coord(Meti::get_to(best_move), to);
-        
-        std::string prom = "";
-        Piece moving = Meti::get_moving(best_move);
-        
-        if ((moving == W_PAWN || moving == B_PAWN) && ((1ULL << Meti::get_to(best_move)) & 0xFF000000000000FFULL)) {
-            Meti::PromotionPiece p = Meti::get_prom(best_move);
-            if (p == Meti::PROMOTION_QUEEN) prom = "q";
-            else if (p == Meti::PROMOTION_ROOK) prom = "r";
-            else if (p == Meti::PROMOTION_BISHOP) prom = "b";
-            else prom = "n";
-        }
-
         // Fire it back to CuteChess
-        std::cout << "bestmove " << from << to << prom << std::endl;
+        std::cout << "bestmove " << move_to_uci(best_move) << std::endl;
         
         is_searching.store(false, std::memory_order_relaxed);
     }
@@ -145,6 +186,8 @@ namespace UCI {
 
                 std::cout << "option name Threads type spin default 1 min 1 max " << SMP::MAX_THREADS << std::endl;
                 std::cout << "option name Hash type spin default 64 min 1 max 16384" << std::endl;
+                std::cout << "option name Move Overhead type spin default 100 min 0 max 5000" << std::endl;
+                std::cout << "option name Opening Variation type check default false" << std::endl;
                 
                 std::cout << "uciok" << std::endl;
             } 
@@ -208,14 +251,32 @@ namespace UCI {
                     if (allocated_ms > btime - 50) allocated_ms = std::max(10LL, btime - 50);
                 }
 
+                if (allocated_ms < 999999999) {
+                    allocated_ms = std::max(10LL, allocated_ms - move_overhead_ms);
+                }
+
+                Meti::Move opening_move = choose_opening_move(board, wtime, winc);
+                if (opening_move != 0) {
+                    std::cout << "bestmove " << move_to_uci(opening_move) << std::endl;
+                    continue;
+                }
+
                 is_searching.store(true, std::memory_order_relaxed);
                 search_thread = std::thread(async_search_worker, board, max_depth, allocated_ms);
             }
             else if (token == "setoption") {
                 ss >> token; // Consume "name"
-                ss >> token; // Read option name
+                std::string option_name;
+                ss >> option_name;
+                if (option_name == "Opening") {
+                    ss >> token;
+                    if (token == "Variation") option_name += " Variation";
+                } else if (option_name == "Move") {
+                    ss >> token;
+                    if (token == "Overhead") option_name += " Overhead";
+                }
                 
-                if (token == "Threads") {
+                if (option_name == "Threads") {
                     ss >> token; // Consume "value"
                     int t;
                     if (ss >> t) {
@@ -223,7 +284,7 @@ namespace UCI {
                         SMP::set_threads(t); // Using the new dynamic thread spawner!
                     }
                 }
-                else if (token == "Hash") {
+                else if (option_name == "Hash") {
                     ss >> token; // Consume "value"
                     int megabytes;
                     if (ss >> megabytes) {
@@ -231,6 +292,15 @@ namespace UCI {
                         join_search();
                         if (!is_searching.load(std::memory_order_relaxed)) TT::allocate(megabytes);
                     }
+                }
+                else if (option_name == "Move Overhead") {
+                    ss >> token; // Consume "value"
+                    int overhead;
+                    if (ss >> overhead) move_overhead_ms = std::max(0, std::min(overhead, 5000));
+                }
+                else if (option_name == "Opening Variation") {
+                    ss >> token; // Consume "value"
+                    if (ss >> token) opening_variation = (token == "true");
                 }
             }
         }
