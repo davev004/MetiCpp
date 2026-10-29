@@ -4,8 +4,7 @@
 #include <sstream>
 #include <thread>
 #include <atomic>
-#include <random>
-#include <vector>
+#include <chrono>
 #include "board.hpp"
 #include "fen.hpp"
 #include "search.hpp"
@@ -47,7 +46,8 @@ namespace UCI {
 
         Meti::MoveList legal_moves;
         MoveGen::generate(board, legal_moves);
-        std::vector<Meti::Move> candidates;
+        Meti::Move candidates[Meti::MAX_MOVES];
+        int candidate_count = 0;
         bool fast_time_control = wtime + (40 * winc) <= 8 * 60 * 1000;
         const char* limited_moves[] = {"e2e4", "d2d4", "c2c4", "g1f3", "b2b4"};
 
@@ -58,22 +58,28 @@ namespace UCI {
             if (!is_legal(checked_board, move)) continue;
 
             if (fast_time_control) {
-                candidates.push_back(move);
+                candidates[candidate_count++] = move;
             } else {
                 std::string move_string = move_to_uci(move);
                 for (const char* limited_move : limited_moves) {
                     if (move_string == limited_move) {
-                        candidates.push_back(move);
+                        candidates[candidate_count++] = move;
                         break;
                     }
                 }
             }
         }
 
-        if (candidates.empty()) return 0;
-        static thread_local std::mt19937 generator(std::random_device{}());
-        std::uniform_int_distribution<size_t> distribution(0, candidates.size() - 1);
-        return candidates[distribution(generator)];
+        if (candidate_count == 0) return 0;
+
+        static thread_local uint64_t random_state =
+            static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
+        random_state ^= board.state.zobristKey + 0x9E3779B97F4A7C15ULL +
+                        (random_state << 6) + (random_state >> 2);
+        random_state ^= random_state << 13;
+        random_state ^= random_state >> 7;
+        random_state ^= random_state << 17;
+        return candidates[random_state % candidate_count];
     }
 
     inline void join_search() {
