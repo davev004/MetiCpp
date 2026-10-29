@@ -1,3 +1,4 @@
+
 name: Release MetiC++
 
 on:
@@ -40,29 +41,41 @@ jobs:
       - name: Compile Engine
         shell: bash
         run: |
-          # 1. Select the correct branchless/hardware GCC flags
-          if [ "${{ matrix.arch }}" == "popcnt" ]; then
+          # Select the target CPU instruction set.
+          if [ "${{ matrix.arch }}" = "popcnt" ]; then
             FLAGS="-O3 -march=x86-64 -mpopcnt"
-          elif [ "${{ matrix.arch }}" == "avx2" ]; then
-            FLAGS="-O3 -march=x86-64-v3" 
-          elif [ "${{ matrix.arch }}" == "avx512" ]; then
-            FLAGS="-O3 -march=x86-64-v4" 
+          elif [ "${{ matrix.arch }}" = "avx2" ]; then
+            FLAGS="-O3 -march=x86-64-v3"
+          elif [ "${{ matrix.arch }}" = "avx512" ]; then
+            FLAGS="-O3 -march=x86-64-v4"
           fi
 
-          # 2. Define the clean output binary name
-          if [ "${{ matrix.os }}" == "windows-latest" ]; then
+          # Set the output filename.
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
             BIN_NAME="MetiC++-windows-${{ github.ref_name }}-${{ matrix.arch }}.exe"
           else
             BIN_NAME="MetiC++-linux-${{ github.ref_name }}-${{ matrix.arch }}"
           fi
 
-          # 3. Compile all source files
-          if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            # Full static linking for Windows to bundle gcc, stdc++, and winpthread
-            g++ -std=c++17 -flto -static -static-libgcc -static-libstdc++ $FLAGS src/*.cpp -o $BIN_NAME
+          # Compile the engine.
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            # Statically link the Windows runtime libraries.
+            g++ -std=c++20 -flto -static -static-libgcc \
+                -static-libstdc++ $FLAGS src/*.cpp -o "$BIN_NAME"
           else
-            # Safe static linking for Linux C/C++ runtimes (avoids GLIBCXX errors)
-            g++ -pthread -std=c++17 -flto -static-libgcc -static-libstdc++ $FLAGS src/*.cpp -o $BIN_NAME
+            # Keep libstdc++ dynamic to avoid inheriting a higher
+            # CPU ISA requirement from the runner's static library.
+            g++ -pthread -std=c++20 -flto -static-libgcc \
+                $FLAGS src/*.cpp -o "$BIN_NAME"
+
+            # Reject a POPCNT binary that advertises an x86-64-v3/v4
+            # requirement, which would exclude the A10-7860K.
+            if [ "${{ matrix.arch }}" = "popcnt" ]; then
+              if readelf -n "$BIN_NAME" | grep -Eq 'x86-64-v[34]'; then
+                echo "ERROR: POPCNT binary requires x86-64-v3 or newer"
+                exit 1
+              fi
+            fi
           fi
 
       - name: Upload Binary to Job Artifacts
@@ -82,7 +95,7 @@ jobs:
           path: release_assets
           merge-multiple: true
 
-      - name: Publish Release
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: release_assets/*
