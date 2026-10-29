@@ -65,8 +65,8 @@ jobs:
           else
             # Keep libstdc++ dynamic to avoid inheriting a higher
             # CPU ISA requirement from the runner's static library.
-            g++ -pthread -std=c++20 -flto -static-libgcc \
-                $FLAGS src/*.cpp -o "$BIN_NAME"
+            g++ -pthread -std=c++20 -O3 \
+              $FLAGS src/*.cpp -o "$BIN_NAME"
 
             # Reject a POPCNT binary that advertises an x86-64-v3/v4
             # requirement, which would exclude the A10-7860K.
