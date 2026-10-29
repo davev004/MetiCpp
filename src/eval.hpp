@@ -98,8 +98,6 @@
         return sq ^ 56; 
     }
 
-
-
     inline int evaluate(const Board& board) {
         // 1. Calculate Game Phase (For Tapered King Evaluation)
         int total_phase = 24; 
@@ -229,6 +227,15 @@
         score_mobility(W_QUEEN, true,  1, 2, Attacks::get_queen_attacks);
         score_mobility(B_QUEEN, false, 1, 2, Attacks::get_queen_attacks);
 
+
+        if (board.state.fullMoveNumber <= 10) {
+            if (board.bitboards[W_QUEEN] & ~(1ULL << 3)) {
+                mg_score -= 20;
+            }
+            if (board.bitboards[B_QUEEN] & ~(1ULL << 59)) {
+                mg_score += 20;
+            }
+        }
 
         // 5. --- Final Interpolation ---
         int final_score = ((mg_score * mg_weight) + (eg_score * eg_weight)) / 256;
