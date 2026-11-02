@@ -1,4 +1,5 @@
 #pragma once
+#include <bit>
 #include <cstdint>
 
 namespace Attacks {
@@ -114,9 +115,9 @@ namespace Attacks {
             int blocker_sq;
             // The CPU never sees this branch; it is resolved at compile-time.
             if constexpr (Dir == NORTH || Dir == EAST || Dir == NE || Dir == NW) {
-                blocker_sq = __builtin_ctzll(blockers);
+                blocker_sq = static_cast<int>(std::countr_zero(blockers));
             } else {
-                blocker_sq = 63 - __builtin_clzll(blockers);
+                blocker_sq = 63 - static_cast<int>(std::countl_zero(blockers));
             }
             ray ^= RAYS.rays[Dir][blocker_sq];
         }

@@ -9,7 +9,7 @@ principal-variation output for analysis tools such as En Croissant.
 Requirements:
 
 - CMake 3.20 or newer
-- A C++20 compiler with GCC/Clang-compatible built-ins
+- A C++20 compiler (GCC, Clang, or MSVC)
 
 ### Linux
 
@@ -25,8 +25,9 @@ ctest --test-dir build-ci --output-on-failure
 
 ### Windows 11
 
-The GitHub release pipeline uses MinGW-w64 GCC, not MSVC. Install the
-prerequisites from an elevated PowerShell prompt:
+The GitHub release artifacts use MinGW-w64 GCC. MSVC is also supported for
+local CMake builds. To install the MinGW toolchain, use an elevated PowerShell
+prompt:
 
 ```powershell
 winget install --id Kitware.CMake --exact
@@ -59,11 +60,20 @@ Using Make:
 make build
 ```
 
-Using CMake directly:
+Using CMake directly with a single-config generator:
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
+```
+
+With Visual Studio's multi-config generator, select the configuration when
+building and testing:
+
+```powershell
+cmake -S . -B build-msvc
+cmake --build build-msvc --config Release --parallel
+ctest --test-dir build-msvc -C Release --output-on-failure
 ```
 
 For host-specific CPU optimization, enable the optional native flag:
@@ -94,6 +104,8 @@ Run the built-in regression suite with:
 ```sh
 ctest --test-dir build --output-on-failure
 ```
+
+For a Visual Studio build, add `-C Release` to the `ctest` command.
 
 The tests cover start-position perft through depth 3, state restoration,
 castling, en passant, promotion, FEN validation, and UCI move parsing.
@@ -198,7 +210,7 @@ The engine advertises these additional UCI options:
 
 ```text
 option name Move Overhead type spin default 100 min 0 max 5000
-option name Opening Variation type check default false
+option name variation type check default false
 ```
 
 Set `Move Overhead` to the amount of time, in milliseconds, that should be
@@ -210,7 +222,7 @@ budget can cause a flag despite the engine finishing its search in time:
 setoption name Move Overhead value 150
 ```
 
-`Opening Variation` is disabled by default. When enabled, it affects only the
+`variation` is disabled by default. When enabled, it affects only the
 initial white move from the starting position. For estimated time controls at
 or faster than 5+3, the engine chooses a random legal white move. For slower
 time controls, it chooses randomly from this limited set:
@@ -224,7 +236,7 @@ played, black's move, or searches where no white clock is supplied. When it is
 disabled, normal search selects the move the engine evaluates as best:
 
 ```text
-setoption name Opening Variation value true
+setoption name variation value true
 position startpos
 go wtime 300000 btime 300000 winc 3000 binc 3000
 ```

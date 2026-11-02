@@ -5,6 +5,7 @@
 #include <thread>
 #include <atomic>
 #include <chrono>
+#include <cctype>
 #include "board.hpp"
 #include "fen.hpp"
 #include "search.hpp"
@@ -20,7 +21,7 @@ namespace UCI {
     inline std::thread search_thread;
     inline std::atomic<bool> is_searching{false};
     inline int move_overhead_ms = 100;
-    inline bool opening_variation = false;
+    inline bool variation = false;
 
     inline std::string move_to_uci(Meti::Move move) {
         char from[3], to[3];
@@ -41,14 +42,19 @@ namespace UCI {
     }
 
     inline Meti::Move choose_opening_move(const Board& board, long long wtime, long long winc) {
-        if (!opening_variation || board.ply != 0 || board.state.sideToMove != WHITE ||
+        if (!variation || board.ply != 0 || board.state.sideToMove != WHITE ||
             wtime <= 0) return 0;
 
         Meti::MoveList legal_moves;
         MoveGen::generate(board, legal_moves);
         Meti::Move candidates[Meti::MAX_MOVES];
         int candidate_count = 0;
-        bool fast_time_control = wtime + (40 * winc) <= 8 * 60 * 1000;
+        // Compare time controls using the usual 40-move estimate.  5+3 is
+        // 300 seconds + 40 * 3 seconds = 7 minutes of estimated play time.
+        // At exactly 5+3 (and anything faster), allow every legal move; only
+        // slower controls use the approved opening list.
+        constexpr long long five_plus_three_ms = 5 * 60 * 1000 + 40 * 3 * 1000;
+        bool fast_time_control = wtime + (40 * winc) <= five_plus_three_ms;
         const char* limited_moves[] = {"e2e4", "d2d4", "c2c4", "g1f3", "b2b4"};
 
         for (int i = 0; i < legal_moves.count; ++i) {
@@ -193,7 +199,7 @@ namespace UCI {
                 std::cout << "option name Threads type spin default 1 min 1 max " << SMP::MAX_THREADS << std::endl;
                 std::cout << "option name Hash type spin default 64 min 1 max 16384" << std::endl;
                 std::cout << "option name Move Overhead type spin default 100 min 0 max 5000" << std::endl;
-                std::cout << "option name Opening Variation type check default false" << std::endl;
+                std::cout << "option name variation type check default false" << std::endl;
                 
                 std::cout << "uciok" << std::endl;
             } 
@@ -274,15 +280,24 @@ namespace UCI {
                 ss >> token; // Consume "name"
                 std::string option_name;
                 ss >> option_name;
-                if (option_name == "Opening") {
+                std::string normalized_option_name;
+                for (char character : option_name) {
+                    normalized_option_name += static_cast<char>(
+                        std::tolower(static_cast<unsigned char>(character)));
+                }
+                if (normalized_option_name == "opening") {
                     ss >> token;
-                    if (token == "Variation") option_name += " Variation";
-                } else if (option_name == "Move") {
+                    if (token == "Variation" || token == "variation") {
+                        normalized_option_name = "variation";
+                    }
+                } else if (normalized_option_name == "move") {
                     ss >> token;
-                    if (token == "Overhead") option_name += " Overhead";
+                    if (token == "Overhead" || token == "overhead") {
+                        normalized_option_name = "move overhead";
+                    }
                 }
                 
-                if (option_name == "Threads") {
+                if (normalized_option_name == "threads") {
                     ss >> token; // Consume "value"
                     int t;
                     if (ss >> t) {
@@ -290,7 +305,7 @@ namespace UCI {
                         SMP::set_threads(t); // Using the new dynamic thread spawner!
                     }
                 }
-                else if (option_name == "Hash") {
+                else if (normalized_option_name == "hash") {
                     ss >> token; // Consume "value"
                     int megabytes;
                     if (ss >> megabytes) {
@@ -299,14 +314,20 @@ namespace UCI {
                         if (!is_searching.load(std::memory_order_relaxed)) TT::allocate(megabytes);
                     }
                 }
-                else if (option_name == "Move Overhead") {
+                else if (normalized_option_name == "move overhead") {
                     ss >> token; // Consume "value"
                     int overhead;
                     if (ss >> overhead) move_overhead_ms = std::max(0, std::min(overhead, 5000));
                 }
-                else if (option_name == "Opening Variation") {
+                else if (normalized_option_name == "variation") {
                     ss >> token; // Consume "value"
-                    if (ss >> token) opening_variation = (token == "true");
+                    if (ss >> token) {
+                        for (char& character : token) {
+                            character = static_cast<char>(
+                                std::tolower(static_cast<unsigned char>(character)));
+                        }
+                        variation = (token == "true");
+                    }
                 }
             }
         }

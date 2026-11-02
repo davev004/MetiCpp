@@ -1,5 +1,6 @@
 #pragma once
 
+#include <bit>
 #include "board.hpp"
 #include "move.hpp"
 #include "threats.hpp"
@@ -40,7 +41,7 @@ inline bool is_legal(const Board& board, Meti::Move) {
     uint64_t king_bb = board.bitboards[our_king];
     
     if (king_bb == 0) return false; 
-    int king_sq = __builtin_ctzll(king_bb);
+    int king_sq = static_cast<int>(std::countr_zero(king_bb));
 
     // Dispatch to the branchless threat scanner
     bool in_check = (opponent == WHITE) ? 

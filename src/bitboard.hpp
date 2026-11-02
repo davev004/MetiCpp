@@ -1,4 +1,5 @@
 #pragma once
+#include <bit>
 #include <cstdint>
 
 namespace Bitboard {
@@ -20,20 +21,19 @@ namespace Bitboard {
 
     // Extracts the index of the Least Significant Bit (LSB) and clears it from the board
     inline int pop_lsb(uint64_t& bitboard) {
-        int square = __builtin_ctzll(bitboard);
+        int square = static_cast<int>(std::countr_zero(bitboard));
         bitboard &= bitboard - 1; // Lightning-fast bitwise clear of the LSB
         return square;
     }
 
     // Extracts the index of the Most Significant Bit (MSB)
     inline int get_msb(uint64_t bitboard) {
-        // __builtin_clzll counts leading zeroes from the left. 
         // 63 - leading zeroes gives us the exact square index.
-        return 63 - __builtin_clzll(bitboard);
+        return 63 - static_cast<int>(std::countl_zero(bitboard));
     }
 
     // Returns the index without clearing the bit
     inline int get_lsb(uint64_t bitboard) {
-        return __builtin_ctzll(bitboard);
+        return static_cast<int>(std::countr_zero(bitboard));
     }
 }

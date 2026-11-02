@@ -1,4 +1,5 @@
 #pragma once
+#include <bit>
 #include "board.hpp"
 #include "types.hpp"
 
@@ -103,10 +104,10 @@
         int total_phase = 24; 
         int current_phase = 0;
 
-        current_phase += __builtin_popcountll(board.bitboards[W_KNIGHT] | board.bitboards[B_KNIGHT]) * 1;
-        current_phase += __builtin_popcountll(board.bitboards[W_BISHOP] | board.bitboards[B_BISHOP]) * 1;
-        current_phase += __builtin_popcountll(board.bitboards[W_ROOK]   | board.bitboards[B_ROOK])   * 2;
-        current_phase += __builtin_popcountll(board.bitboards[W_QUEEN]  | board.bitboards[B_QUEEN])  * 4;
+        current_phase += std::popcount(board.bitboards[W_KNIGHT] | board.bitboards[B_KNIGHT]) * 1;
+        current_phase += std::popcount(board.bitboards[W_BISHOP] | board.bitboards[B_BISHOP]) * 1;
+        current_phase += std::popcount(board.bitboards[W_ROOK]   | board.bitboards[B_ROOK])   * 2;
+        current_phase += std::popcount(board.bitboards[W_QUEEN]  | board.bitboards[B_QUEEN])  * 4;
 
         if (current_phase > total_phase) current_phase = total_phase;
 
@@ -122,7 +123,7 @@
             { \
                 uint64_t bb = board.bitboards[PIECE_TYPE]; \
                 while (bb) { \
-                    int sq = __builtin_ctzll(bb); \
+                    int sq = static_cast<int>(std::countr_zero(bb)); \
                     int table_val = IS_WHITE ? PST[sq] : PST[mirror(sq)]; \
                     int val = VALUE + table_val; \
                     if (IS_WHITE) { mg_score += val; eg_score += val; } \
@@ -152,14 +153,14 @@
         // 3. --- Tapered King Evaluation ---
         uint64_t wk = board.bitboards[W_KING];
         if (wk) {
-            int sq = __builtin_ctzll(wk);
+            int sq = static_cast<int>(std::countr_zero(wk));
             mg_score += PST_KING[sq];
             eg_score += PST_KING_ENDGAME[sq];
         }
 
         uint64_t bk = board.bitboards[B_KING];
         if (bk) {
-            int sq = __builtin_ctzll(bk);
+            int sq = static_cast<int>(std::countr_zero(bk));
             mg_score -= PST_KING[mirror(sq)];
             eg_score -= PST_KING_ENDGAME[mirror(sq)];
         }
@@ -184,11 +185,11 @@
 
         // White pawns attacking North-West (+7) and North-East (+9)
         uint64_t w_support_mask = ((w_pawns & NOT_FILE_A) << 7) | ((w_pawns & NOT_FILE_H) << 9);
-        int w_supported = __builtin_popcountll(w_pawns & w_support_mask);
+        int w_supported = std::popcount(w_pawns & w_support_mask);
 
         // Black pawns attacking South-East (-7) and South-West (-9)
         uint64_t b_support_mask = ((b_pawns & NOT_FILE_H) >> 7) | ((b_pawns & NOT_FILE_A) >> 9);
-        int b_supported = __builtin_popcountll(b_pawns & b_support_mask);
+        int b_supported = std::popcount(b_pawns & b_support_mask);
 
         // Award 15 centipawns per supported pawn
         mg_score += (w_supported - b_supported) * 15;
@@ -205,8 +206,8 @@
             uint64_t valid_squares = is_white ? ~board.occupancy[WHITE] : ~board.occupancy[BLACK];
             
             while (bb) {
-                int sq = __builtin_ctzll(bb);
-                int mobility = __builtin_popcountll(attack_func(sq, occ) & valid_squares);
+                int sq = static_cast<int>(std::countr_zero(bb));
+                int mobility = std::popcount(attack_func(sq, occ) & valid_squares);
                 
                 if (is_white) { mg_score += mobility * mg_weight; eg_score += mobility * eg_weight; }
                 else          { mg_score -= mobility * mg_weight; eg_score -= mobility * eg_weight; }

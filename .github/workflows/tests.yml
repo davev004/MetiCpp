@@ -11,8 +11,8 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Build and test
+  linux:
+    name: Build and test (Linux/GCC)
     runs-on: ubuntu-latest
 
     steps:
@@ -27,3 +27,20 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build-ci --output-on-failure
+
+  windows:
+    name: Build and test (Windows/MSVC)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build-ci
+
+      - name: Build
+        run: cmake --build build-ci --config Release --parallel 2
+
+      - name: Test
+        run: ctest --test-dir build-ci -C Release --output-on-failure

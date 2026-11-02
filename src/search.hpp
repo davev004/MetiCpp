@@ -1,4 +1,5 @@
 #pragma once
+#include <bit>
 #include <chrono>
 #include <iostream>
 #include "board.hpp"
@@ -98,7 +99,7 @@ namespace Search {
         
         bool in_check = false;
         if (king_bb) {
-            int king_sq = __builtin_ctzll(king_bb);
+            int king_sq = static_cast<int>(std::countr_zero(king_bb));
             in_check = (opponent == WHITE) ? 
                        Threats::is_square_attacked<WHITE>(board, king_sq) : 
                        Threats::is_square_attacked<BLACK>(board, king_sq);
@@ -238,7 +239,7 @@ namespace Search {
             uint64_t king_bb = board.bitboards[our_king];
             
             if (king_bb == 0) return {0, false};
-            int king_sq = __builtin_ctzll(king_bb);
+            int king_sq = static_cast<int>(std::countr_zero(king_bb));
 
             bool in_check = (opponent == WHITE) ? 
                             Threats::is_square_attacked<WHITE>(board, king_sq) : 
