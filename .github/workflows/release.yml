@@ -71,6 +71,12 @@ jobs:
           else
             g++ -pthread -std=c++20 $FLAGS src/*.cpp -o "$BIN_NAME"
 
+            # Preserve executable permissions for users downloading the
+            # Linux engine from a GitHub Release. Raw release assets are
+            # commonly downloaded as mode 0644, so also publish a tarball.
+            chmod +x "$BIN_NAME"
+            tar -czf "${BIN_NAME}.tar.gz" "$BIN_NAME"
+
             # Inspect the POPCNT binary before validating its ISA.
             if [ "${{ matrix.arch }}" = "popcnt" ]; then
               echo "=== ELF ISA notes ==="
