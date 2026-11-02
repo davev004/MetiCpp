@@ -242,6 +242,7 @@ namespace UCI {
                 int max_depth = 64; 
                 long long wtime = 0, btime = 0;
                 long long winc = 0, binc = 0;
+                long long movetime = 0;
                 long long allocated_ms = 5000; 
                 bool depth_only = false;
                 
@@ -251,9 +252,12 @@ namespace UCI {
                     else if (token == "btime") ss >> btime;
                     else if (token == "winc") ss >> winc;
                     else if (token == "binc") ss >> binc;
+                    else if (token == "movetime") ss >> movetime;
                 }
                 
-                if (depth_only && wtime == 0 && btime == 0) {
+                if (movetime > 0) {
+                    allocated_ms = movetime;
+                } else if (depth_only && wtime == 0 && btime == 0) {
                     allocated_ms = 999999999;
                 } else if (board.state.sideToMove == WHITE && wtime > 0) {
                     allocated_ms = (wtime / 20) + (winc / 2);
